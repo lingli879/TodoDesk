@@ -2,7 +2,16 @@
 // preload：向两个渲染窗口暴露受控 API（contextBridge），渲染进程不直接碰文件系统。
 const { contextBridge, ipcRenderer } = require('electron');
 
-const invoke = (ch) => (...args) => ipcRenderer.invoke(ch, ...args);
+// 主进程 handler 统一返回 { ok, value } | { ok:false, error } 信封，此处解包：
+// 成功返回 value，失败抛 Error（渲染层 await 即得原始数据）。
+const invoke = (ch) => async (...args) => {
+  const r = await ipcRenderer.invoke(ch, ...args);
+  if (r && typeof r === 'object' && 'ok' in r) {
+    if (!r.ok) throw new Error(r.error);
+    return r.value;
+  }
+  return r;
+};
 
 contextBridge.exposeInMainWorld('todoDesk', {
   categories: {
