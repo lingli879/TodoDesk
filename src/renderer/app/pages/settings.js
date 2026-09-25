@@ -33,6 +33,11 @@ export async function renderSettingsPage(page) {
       e.preventDefault();
       if (e.key === 'Escape') { cleanup(); return; }
       if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return; // 等待非修饰键
+      if (!e.ctrlKey && !e.altKey && !e.metaKey) {
+        // 裸键会劫持系统级按键（任何程序里按此键都会触发），必须带修饰键
+        hotkeyErr.textContent = '请加 Ctrl / Alt 等修饰键组合';
+        return;
+      }
       const parts = [];
       if (e.ctrlKey) parts.push('Control');
       if (e.altKey) parts.push('Alt');
@@ -45,8 +50,13 @@ export async function renderSettingsPage(page) {
       recording = false;
       recBtn.removeEventListener('keydown', onKey);
       if (accel) {
-        await window.todoDesk.settings.set({ hotkey: accel });
-        recBtn.textContent = accel;
+        try {
+          await window.todoDesk.settings.set({ hotkey: accel });
+          recBtn.textContent = accel;
+          hotkeyErr.textContent = '';
+        } catch (err) {
+          hotkeyErr.textContent = err.message;
+        }
       } else {
         recBtn.textContent = (await window.todoDesk.settings.get()).hotkey || '未设置';
       }

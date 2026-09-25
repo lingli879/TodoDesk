@@ -70,6 +70,22 @@ test('validateCategoryInput：color 必须在色板内', () => {
   assert.equal(m.validateCategoryInput({ name: '', color: '#2FA98C' }).valid, false);
 });
 
+test('validateSettingsPatch：白名单/类型/范围/快捷键须带修饰键', () => {
+  assert.equal(m.validateSettingsPatch({ widgetOpacity: 0.6 }).valid, true);
+  assert.equal(m.validateSettingsPatch({ widgetOpacity: 5 }).valid, false, '透明度超范围拒绝');
+  assert.equal(m.validateSettingsPatch({ widgetOpacity: 'x' }).valid, false, '透明度非数字拒绝');
+  assert.equal(m.validateSettingsPatch({ hacker: 1 }).valid, false, '未知键拒绝');
+  assert.equal(m.validateSettingsPatch({ hotkey: 'T' }).valid, false, '裸键快捷键拒绝');
+  assert.equal(m.validateSettingsPatch({ hotkey: 'Control+Alt+T' }).valid, true);
+  assert.equal(m.validateSettingsPatch({ widgetVisibleCategoryIds: ['a', 'b'] }).valid, true);
+  assert.equal(m.validateSettingsPatch({ widgetVisibleCategoryIds: 'a' }).valid, false);
+  assert.equal(m.validateSettingsPatch({ widgetPosition: { x: 1, y: 2 } }).valid, true);
+  assert.equal(m.validateSettingsPatch({ widgetPosition: { x: 1 } }).valid, false);
+  assert.equal(m.validateSettingsPatch({ widgetSize: null }).valid, true);
+  assert.equal(m.validateSettingsPatch({ autoLaunch: true, showCompletedInWidget: false, widgetGroupByCategory: true, widgetShowUncategorized: false }).valid, true);
+  assert.equal(m.validateSettingsPatch({ autoLaunch: 'yes' }).valid, false);
+});
+
 test('showCompletedInWidget=false 时桌面贴视图不含当天完成', () => {
   const now = new Date(2026, 8, 25, 12, 0);
   const cat = m.createCategory({ name: '工作', color: '#2FA98C', sortOrder: 0 }, now.toISOString());

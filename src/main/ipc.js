@@ -3,7 +3,7 @@
 const {
   CATEGORY_PALETTE, createCategory, createTodo, renumber,
   visibleTodos, filterTodos, validateNewTodo, validateTodoPatch,
-  validateCategoryInput, applyTodoUpdate,
+  validateCategoryInput, validateSettingsPatch, applyTodoUpdate,
 } = require('../shared/model');
 
 function registerIpc(ipcMain, services) {
@@ -143,6 +143,8 @@ function registerIpc(ipcMain, services) {
   on('settings:get', () => services.getState().settings);
 
   on('settings:set', (patch) => {
+    const v = validateSettingsPatch(patch);
+    if (!v.valid) throw new Error(v.errors.join('；'));
     const prev = services.getState().settings;
     const next = { ...prev, ...patch };
     services.mutate((s) => { s.settings = next; });

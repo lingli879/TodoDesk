@@ -153,6 +153,34 @@ function validateCategoryInput(input) {
 }
 
 // 合并 patch；凡通过编辑器改动 endTime 的保存动作置 endTimeManuallySet=true，清空 endTime 则清除标记。
+// 设置 patch 校验：白名单 + 类型/范围；快捷键必须是「修饰键+键」组合（防裸键劫持）。
+const HOTKEY_RE = /^(Control|Ctrl|CommandOrControl|Alt|Shift|Super|Meta)(\+(Control|Ctrl|Alt|Shift|Super|Meta|[A-Z0-9]))+$/;
+
+function validateSettingsPatch(patch) {
+  const errors = [];
+  const rules = {
+    hotkey: (v) => typeof v === 'string' && HOTKEY_RE.test(v),
+    widgetOpacity: (v) => typeof v === 'number' && v >= 0.3 && v <= 1,
+    widgetPosition: (v) => v === null || (isRect(v) && 'x' in v && 'y' in v),
+    widgetSize: (v) => v === null || (isRect(v) && 'width' in v && 'height' in v),
+    showCompletedInWidget: isBool,
+    widgetGroupByCategory: isBool,
+    widgetVisibleCategoryIds: (v) => Array.isArray(v) && v.every((x) => typeof x === 'string'),
+    widgetShowUncategorized: isBool,
+    autoLaunch: isBool,
+  };
+  for (const [k, v] of Object.entries(patch || {})) {
+    if (!(k in rules)) { errors.push(`未知设置项 ${k}`); continue; }
+    if (!rules[k](v)) errors.push(`设置项 ${k} 的值无效`);
+  }
+  return { valid: errors.length === 0, errors };
+}
+
+function isBool(v) { return typeof v === 'boolean'; }
+function isRect(v) {
+  return v && typeof v === 'object' && Object.values(v).every((x) => typeof x === 'number');
+}
+
 function applyTodoUpdate(todo, patch, now) {
   const next = { ...todo, ...patch, updatedAt: now };
   if ('endTime' in patch) {
@@ -185,6 +213,7 @@ module.exports = {
   validateNewTodo,
   validateTodoPatch,
   validateCategoryInput,
+  validateSettingsPatch,
   applyTodoUpdate,
   seedState,
 };

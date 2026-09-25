@@ -1,10 +1,11 @@
 // 待办管理页：筛选（状态/分类/日期范围）、列表、新建/编辑弹窗（复用共享表单）、批量删除。
 // 历史完成查看 = 状态选「已完成」+ 日期范围按完成时间筛选。
-import { createTodoForm } from '../../common/todo-form.js';
+import { createTodoForm, diffTodoPatch } from '../../common/todo-form.js';
 import { fmtDateTime } from '../../common/format.js';
 import { confirmDialog } from '../app.js';
 
 let filter = { status: 'all', categoryId: 'all', dateField: 'startTime', dateFrom: '', dateTo: '' };
+let sortState = null; // { key: 'startTime'|'endTime'|'dueTime', dir: 1|-1 }，null = 默认 sortOrder
 
 export async function renderTodosPage(page) {
   const [categories, todos] = await Promise.all([
@@ -58,11 +59,29 @@ export async function renderTodosPage(page) {
   const table = document.createElement('table');
   table.className = 'list';
   const thead = document.createElement('thead');
-  thead.innerHTML = '<tr><th style="width:32px"></th><th>标题</th><th>分类</th><th>开始</th><th>完成</th><th>截止</th><th>备注</th><th style="width:110px">操作</th></tr>';
+  const tr = document.createElement('tr');
+  tr.append(Object.assign(document.createElement('th'), { style: 'width:32px' }));
+  tr.append(th('标题'));
+  tr.append(th('分类'));
+  // 时间列头可点击排序（spec §3），再点切换升降序
+  for (const [label, key] of [['开始', 'startTime'], ['完成', 'endTime'], ['截止', 'dueTime']]) {
+    const h = th(label + (sortState && sortState.key === key ? (sortState.dir === 1 ? ' ↑' : ' ↓') : ''), () => {
+      sortState = sortState && sortState.key === key ? { key, dir: -sortState.dir } : { key, dir: 1 };
+      rerender();
+    });
+    h.style.cursor = 'pointer';
+    tr.append(h);
+  }
+  tr.append(th('备注'));
+  tr.append(Object.assign(document.createElement('th'), { style: 'width:110px', textContent: '操作' }));
+  thead.append(tr);
   table.append(thead);
   const tbody = document.createElement('tbody');
 
-  for (const t of todos) {
+  const rows = sortState
+    ? [...todos].sort((a, b) => (new Date(a[sortState.key] ?? 0) - new Date(b[sortState.key] ?? 0)) * sortState.dir)
+    : todos;
+  for (const t of rows) {
     const cat = t.categoryId ? catMap.get(t.categoryId) : null;
     const done = t.endTime != null;
     const overdue = !done && t.dueTime != null && new Date(t.dueTime).getTime() < Date.now();
@@ -178,7 +197,13 @@ async function openTodoModal(todo, categories) {
     if (!values) return;
     try {
       if (todo) {
-        await window.todoDesk.todos.update({ id: todo.id, patch: values });
+        // 取消完成且完成时间曾被人工改过 → 先确认
+        if (todo.endTime != null && values.endTime == null && todo.endTimeManuallySet) {
+          if (!(await confirmDialog('完成时间是手动调整过的，取消完成后将清除，确定？'))) return;
+        }
+        const patch = diffTodoPatch(todo, values);
+        if (Object.keys(patch).length) await window.todoDesk.todos.update({ id: todo.id, patch });
+        closeLayer();
       } else {
         const created = await window.todoDesk.todos.create({ title: values.title, categoryId: values.categoryId });
         const patch = {};
@@ -197,6 +222,12 @@ async function openTodoModal(todo, categories) {
 
 // ---- 小工具 ----
 function td(el) { const c = document.createElement('td'); c.append(el); return c; }
+function th(text, onClick) {
+  const h = document.createElement('th');
+  h.textContent = text;
+  if (onClick) h.addEventListener('click', onClick);
+  return h;
+}
 function tdText(text) { const c = td(document.createTextNode(text)); return c; }
 function timeTd(iso, overdue = false) {
   const c = document.createElement('td');

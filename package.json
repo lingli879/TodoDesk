@@ -20,6 +20,7 @@
     },
     "files": [
       "src/**/*",
+      "build/tray.png",
       "package.json"
     ],
     "win": {

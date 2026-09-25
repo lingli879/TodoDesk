@@ -1,8 +1,9 @@
 'use strict';
 // TodoDesk 主进程入口：单实例、数据目录、托盘、双窗口、IPC 注册、生命周期。
-const { app, dialog, ipcMain, shell, Tray, Menu, nativeImage, Notification } = require('electron');
+const { app, dialog, ipcMain, shell, Tray, Menu, nativeImage, Notification, screen } = require('electron');
 const path = require('node:path');
 const store = require('../shared/store');
+const { fitRectToDisplays } = require('../shared/geometry');
 const logger = require('./logger');
 const { registerIpc } = require('./ipc');
 const { createWidgetWindow, applyHotkey } = require('./widget-window');
@@ -132,7 +133,15 @@ function showMainWindow() {
 }
 
 function showWidget() {
-  if (widgetWin && !widgetWin.isDestroyed()) widgetWin.show();
+  if (widgetWin && !widgetWin.isDestroyed()) {
+    // 显示前做多屏校正（spec §7：启动/显示时——隐藏期间可能拔掉了显示器）
+    const b = widgetWin.getBounds();
+    const fit = fitRectToDisplays(b, screen.getAllDisplays());
+    if (fit.x !== b.x || fit.y !== b.y || fit.width !== b.width || fit.height !== b.height) {
+      widgetWin.setBounds(fit);
+    }
+    widgetWin.show();
+  }
 }
 
 function hideWidget() {

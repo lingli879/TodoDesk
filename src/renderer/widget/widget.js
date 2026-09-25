@@ -1,6 +1,6 @@
 // 桌面贴：渲染 + 统一内联交互（点空白新建 / 点标题改名 / 点勾完成）+ 详情面板。
 import { fmtTime } from '../common/format.js';
-import { createTodoForm } from '../common/todo-form.js';
+import { createTodoForm, diffTodoPatch } from '../common/todo-form.js';
 
 const panel = document.getElementById('panel');
 const listEl = document.getElementById('list');
@@ -379,8 +379,14 @@ export async function openDetail(todoId) {
   save.addEventListener('click', async () => {
     const values = form.getValues();
     if (!values) return;
+    const patch = diffTodoPatch(todo, values);
+    // 取消完成且完成时间曾被人工改过 → 先确认（spec §3 防误丢人工记录）
+    if (todo.endTime != null && values.endTime == null && todo.endTimeManuallySet) {
+      if (!(await confirmBox('完成时间是手动调整过的，取消完成后将清除，确定？'))) return;
+    }
+    if (!Object.keys(patch).length) { closePanel(); return; }
     try {
-      await window.todoDesk.todos.update({ id: todoId, patch: values });
+      await window.todoDesk.todos.update({ id: todoId, patch });
       closePanel();
     } catch (e) {
       form.showError(e.message);

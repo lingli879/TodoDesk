@@ -1,6 +1,19 @@
 // 共享待办表单：桌面贴详情面板与主程序编辑弹窗共用同一套字段与联动逻辑。
 import { isoToLocalInput, localInputToIso } from './format.js';
 
+// 只保留相对原待办真正变化的字段（按分钟精度比较时间），避免无关保存误置 endTimeManuallySet。
+export function diffTodoPatch(todo, values) {
+  const sameMinute = (a, b) => isoToLocalInput(a) === isoToLocalInput(b);
+  const patch = {};
+  if (values.title !== todo.title) patch.title = values.title;
+  if ((values.notes || '') !== (todo.notes || '')) patch.notes = values.notes;
+  if ((values.categoryId ?? null) !== (todo.categoryId ?? null)) patch.categoryId = values.categoryId;
+  if (!sameMinute(values.startTime, todo.startTime)) patch.startTime = values.startTime;
+  if (!sameMinute(values.endTime, todo.endTime)) patch.endTime = values.endTime;
+  if (!sameMinute(values.dueTime, todo.dueTime)) patch.dueTime = values.dueTime;
+  return patch;
+}
+
 // createTodoForm({ todo, categories, now }) → { el, getValues() }
 // 字段：标题、分类（含「未分类」）、备注、开始/完成/截止（datetime-local）+ 完成勾选。
 // 勾选「完成」时若完成时间为空自动填 now；取消勾选清空完成时间。
@@ -68,7 +81,7 @@ export function createTodoForm({ todo = null, categories = [], now = new Date().
       cb.checked = !!(todo && todo.endTime != null);
       cb.addEventListener('change', () => {
         if (cb.checked && !input.value) input.value = isoToLocalInput(now);
-        if (!cb.checked) input.value = '';
+        // 取消勾选不清空输入框：人工改过的完成时间保留原值，是否清除由保存动作（含确认）决定
       });
       els.doneToggle = cb;
       const lbl = document.createElement('span');
