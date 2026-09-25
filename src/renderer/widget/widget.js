@@ -1,5 +1,6 @@
-// 桌面贴：渲染 + 统一内联交互（点空白新建 / 点标题改名 / 点勾完成）。
+// 桌面贴：渲染 + 统一内联交互（点空白新建 / 点标题改名 / 点勾完成）+ 详情面板。
 import { fmtTime } from '../common/format.js';
+import { createTodoForm } from '../common/todo-form.js';
 
 const panel = document.getElementById('panel');
 const listEl = document.getElementById('list');
@@ -9,6 +10,7 @@ const doneCount = document.getElementById('doneCount');
 const countEl = document.getElementById('count');
 const ctxMenu = document.getElementById('ctxMenu');
 const confirmEl = document.getElementById('confirmBox');
+const detailLayer = document.getElementById('detailLayer');
 
 let view = { groups: [], completedToday: [], activeCount: 0 };
 let catsCache = [];          // 按 sortOrder 升序
@@ -269,7 +271,7 @@ export function openCtxMenu(todoId, x, y) {
   };
   item(done ? '取消完成' : '完成', () => (done ? uncompleteTodo(todoId) : completeTodo(todoId)));
   if (!done) item('修改标题', () => beginEdit(todoId));
-  item('打开详情', () => {}, true);
+  item('打开详情', () => openDetail(todoId));
   item('删除', async () => {
     if (await confirmBox('删除这条待办？')) await window.todoDesk.todos.remove(todoId);
   });
@@ -331,6 +333,61 @@ listEl.addEventListener('pointercancel', () => {
   drag = null;
 });
 
+// ---------- 详情面板（右键菜单「打开详情」/ 条目「⋯」按钮；等宽覆盖、内部滚动） ----------
+let detailOpen = false;
+
+export async function openDetail(todoId) {
+  const todos = await window.todoDesk.todos.list();
+  const todo = todos.find((t) => t.id === todoId);
+  if (!todo) return;
+  const categories = await window.todoDesk.categories.list();
+  const form = createTodoForm({ todo, categories });
+
+  const closePanel = () => {
+    detailLayer.hidden = true;
+    detailLayer.replaceChildren();
+    detailOpen = false;
+  };
+
+  const save = document.createElement('button');
+  save.className = 'primary';
+  save.textContent = '保存';
+  const del = document.createElement('button');
+  del.className = 'danger';
+  del.textContent = '删除';
+  const close = document.createElement('button');
+  close.textContent = '关闭';
+  const bar = document.createElement('div');
+  bar.className = 'detail-bar';
+  bar.append(del, close, save);
+
+  const inner = document.createElement('div');
+  inner.className = 'detail-inner';
+  inner.append(form.el, bar);
+  detailLayer.replaceChildren(inner);
+  detailLayer.hidden = false;
+  detailOpen = true;
+  form.el.querySelector('input').focus();
+
+  close.addEventListener('click', closePanel);
+  del.addEventListener('click', async () => {
+    if (await confirmBox('删除这条待办？')) {
+      await window.todoDesk.todos.remove(todoId);
+      closePanel();
+    }
+  });
+  save.addEventListener('click', async () => {
+    const values = form.getValues();
+    if (!values) return;
+    try {
+      await window.todoDesk.todos.update({ id: todoId, patch: values });
+      closePanel();
+    } catch (e) {
+      form.showError(e.message);
+    }
+  });
+}
+
 // ---------- 事件接线 ----------
 listEl.addEventListener('click', (e) => {
   const todoLi = e.target.closest('.todo');
@@ -343,7 +400,8 @@ listEl.addEventListener('click', (e) => {
       return;
     }
     if (e.target.classList.contains('title')) { beginEdit(id); return; }
-    return; // more/grip 等由各自模块接线
+    if (e.target.classList.contains('more')) { openDetail(id); return; }
+    return; // grip 由拖拽模块接线
   }
   // 空白处：新建。分组内→该组分类；分组外→第一个分类。
   const group = e.target.closest('.group');
