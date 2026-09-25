@@ -284,6 +284,53 @@ function closeCtxMenu() {
   ctxMenu.replaceChildren();
 }
 
+// ---------- 拖拽排序（组内，⠿ 手柄；点标题仍是编辑，两种手势互不干扰） ----------
+let drag = null; // { id, li, ul, startY, started }
+
+listEl.addEventListener('pointerdown', (e) => {
+  if (!e.target.classList.contains('grip')) return;
+  const li = e.target.closest('.todo');
+  if (!li) return;
+  drag = { id: li.dataset.id, li, ul: li.parentElement, startY: e.clientY, started: false };
+  e.target.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+
+listEl.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  if (!drag.started) {
+    if (Math.abs(e.clientY - drag.startY) < 4) return; // 4px 阈值，避免误触
+    drag.started = true;
+    drag.li.classList.add('dragging');
+  }
+  const siblings = [...drag.ul.children]
+    .filter((el) => el !== drag.li && el.classList.contains('todo'));
+  const next = siblings.find((el) => {
+    const r = el.getBoundingClientRect();
+    return e.clientY < r.top + r.height / 2;
+  });
+  if (next) drag.ul.insertBefore(drag.li, next);
+  else drag.ul.append(drag.li);
+});
+
+listEl.addEventListener('pointerup', async () => {
+  if (!drag) return;
+  const { li, ul, started } = drag;
+  drag = null;
+  li.classList.remove('dragging');
+  if (!started) return;
+  const ids = [...ul.children]
+    .filter((el) => el.classList.contains('todo') && !el.classList.contains('editing'))
+    .map((el) => el.dataset.id);
+  await window.todoDesk.todos.reorder(ids);
+});
+
+listEl.addEventListener('pointercancel', () => {
+  if (!drag) return;
+  drag.li.classList.remove('dragging');
+  drag = null;
+});
+
 // ---------- 事件接线 ----------
 listEl.addEventListener('click', (e) => {
   const todoLi = e.target.closest('.todo');
