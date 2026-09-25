@@ -1,0 +1,29 @@
+/* TodoDesk 色彩与形态令牌（spec §6）：亮色清新白天 / 暗色深杉绿，跟随 Windows 主题 */
+:root {
+  --bg: #F6FAF8;
+  --surface: #FFFFFF;
+  --ink: #22302B;
+  --ink-soft: #5C6E68;
+  --accent: #2FA98C;
+  --accent-tint: #E3F4EE;
+  --danger: #E06A5E;
+  --hairline: #E3EBE7;
+  --radius: 10px;
+  --radius-lg: 12px;
+  --shadow: 0 4px 16px rgba(34, 48, 43, 0.08);
+  --font: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17211E;
+    --surface: #1E2B27;
+    --ink: #E8F1ED;
+    --ink-soft: #9AB0A8;
+    --accent: #4CC8A6;
+    --accent-tint: rgba(76, 200, 166, 0.14);
+    --danger: #E57A6E;
+    --hairline: #2A3A34;
+    --shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+  }
+}

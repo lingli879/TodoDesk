@@ -1,23 +1,30 @@
 'use strict';
-// TodoDesk 主进程入口：单实例、数据目录解析与写权限检测、损坏确认、日志、生命周期。
-const { app, dialog } = require('electron');
-const path = require('path');
+// TodoDesk 主进程入口：单实例、数据目录、托盘、双窗口、IPC 注册、生命周期。
+const { app, dialog, ipcMain, shell, Tray, Menu, nativeImage, Notification } = require('electron');
+const path = require('node:path');
 const store = require('../shared/store');
 const logger = require('./logger');
+const { registerIpc } = require('./ipc');
+const { createWidgetWindow, applyHotkey } = require('./widget-window');
+const { createMainWindow } = require('./main-window');
 
 let dataDir = null;
 let state = null;
+let widgetWin = null;
+let mainWin = null;
+let tray = null;
+let quitting = false;
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    // Task 7 接入：显示主程序与桌面贴
     showMainWindow();
     showWidget();
   });
   app.whenReady().then(bootstrap);
+  app.on('before-quit', () => { quitting = true; });
   app.on('window-all-closed', () => { /* 托盘常驻，不退出 */ });
 }
 
@@ -51,16 +58,28 @@ async function bootstrap() {
     logger.write(dataDir, '数据文件双损坏，已留证并以空数据启动');
   } else if (r.recoveredFromBackup) {
     try {
-      const { Notification } = require('electron');
       new Notification({ title: 'TodoDesk', body: '数据文件损坏，已从备份恢复' }).show();
     } catch { /* 通知失败不影响启动 */ }
     logger.write(dataDir, '主数据损坏，已从备份恢复');
   }
   state = r.data;
   saveStateNow();
-  // Task 6/7 接入：创建桌面贴窗口、主程序窗口、托盘、注册 IPC
+
   createWidget();
-  showMainWindow();
+  createMainWin();
+  createTray();
+  registerIpc(ipcMain, {
+    getState: () => state,
+    mutate: (fn) => { const out = fn(state); saveStateNow(); return out; },
+    broadcast,
+    openDataFolder: () => shell.openPath(dataDir),
+    showMainWindow,
+    showWidget,
+    hideWidget,
+    toggleWidget,
+    applyHotkey: (accel) => applyHotkey(accel, toggleWidget),
+    setAutoLaunch: (v) => app.setLoginItemSettings({ openAtLogin: !!v }),
+  });
 }
 
 function saveStateNow() {
@@ -71,11 +90,13 @@ function saveStateNow() {
   }
 }
 
-// ---- 窗口管理 ----
-const { createWidgetWindow, applyHotkey } = require('./widget-window');
+function broadcast(channel) {
+  for (const w of [mainWin, widgetWin]) {
+    if (w && !w.isDestroyed()) w.webContents.send(channel);
+  }
+}
 
-let widgetWin = null;
-
+// ---- 窗口 ----
 function createWidget() {
   widgetWin = createWidgetWindow({
     getSettings: () => state.settings,
@@ -87,11 +108,35 @@ function createWidget() {
   });
   widgetWin.on('closed', () => { widgetWin = null; });
   const ok = applyHotkey(state.settings.hotkey, toggleWidget);
-  if (!ok) logger.write(dataDir, `快捷键注册失败：${state.settings.hotkey}`);
+  if (!ok) {
+    logger.write(dataDir, `快捷键注册失败：${state.settings.hotkey}`);
+    try {
+      new Notification({ title: 'TodoDesk', body: '全局快捷键注册失败，可在设置中修改' }).show();
+    } catch { /* 忽略 */ }
+  }
+}
+
+function createMainWin() {
+  mainWin = createMainWindow();
+  mainWin.on('close', (e) => {
+    if (!quitting) {
+      e.preventDefault();
+      mainWin.hide();
+    }
+  });
+}
+
+function showMainWindow() {
+  if (!mainWin || mainWin.isDestroyed()) createMainWin();
+  else { mainWin.show(); mainWin.focus(); }
 }
 
 function showWidget() {
   if (widgetWin && !widgetWin.isDestroyed()) widgetWin.show();
+}
+
+function hideWidget() {
+  if (widgetWin && !widgetWin.isDestroyed()) widgetWin.hide();
 }
 
 function toggleWidget() {
@@ -100,5 +145,22 @@ function toggleWidget() {
   else widgetWin.show();
 }
 
-// Task 7 接入：主程序窗口
-function showMainWindow() {}
+// ---- 托盘 ----
+function createTray() {
+  const icon = nativeImage.createFromPath(path.join(__dirname, '../../build/tray.png'));
+  tray = new Tray(icon);
+  tray.setToolTip('TodoDesk');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: '打开主程序', click: () => showMainWindow() },
+    { label: '显示/隐藏桌面贴', click: () => toggleWidget() },
+    { type: 'separator' },
+    { label: '退出', click: () => exitApp() },
+  ]));
+}
+
+function exitApp() {
+  quitting = true;
+  if (widgetWin && !widgetWin.isDestroyed()) widgetWin.destroy();
+  if (mainWin && !mainWin.isDestroyed()) mainWin.destroy();
+  app.quit();
+}
