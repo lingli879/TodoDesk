@@ -69,3 +69,13 @@ test('validateCategoryInput：color 必须在色板内', () => {
   assert.equal(m.validateCategoryInput({ name: 'x', color: '#2FA98C' }).valid, true);
   assert.equal(m.validateCategoryInput({ name: '', color: '#2FA98C' }).valid, false);
 });
+
+test('showCompletedInWidget=false 时桌面贴视图不含当天完成', () => {
+  const now = new Date(2026, 8, 25, 12, 0);
+  const cat = m.createCategory({ name: '工作', color: '#2FA98C', sortOrder: 0 }, now.toISOString());
+  const t = m.createTodo({ title: 'a', categoryId: cat.id }, [], now.toISOString());
+  const done = m.applyTodoUpdate(t, { endTime: new Date(2026, 8, 25, 10, 0).toISOString() }, now.toISOString());
+  const sOff = { ...m.DEFAULT_SETTINGS, showCompletedInWidget: false };
+  assert.equal(m.visibleTodos([done], [cat], sOff, now).completedToday.length, 0);
+  assert.equal(m.visibleTodos([done], [cat], m.DEFAULT_SETTINGS, now).completedToday.length, 1);
+});

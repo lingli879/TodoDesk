@@ -89,7 +89,7 @@ function visibleTodos(todos, categories, settings, now) {
       groups.push({ key: '__none__', category: null, todos: active.filter((t) => t.categoryId == null).sort(bySort) });
     }
   }
-  const completedToday = todos
+  const completedToday = settings.showCompletedInWidget === false ? [] : todos
     .filter((t) => isCompleted(t) && isSameDay(t.endTime, now))
     .sort((a, b) => new Date(b.endTime) - new Date(a.endTime));
   return { groups, completedToday, activeCount: active.length };
