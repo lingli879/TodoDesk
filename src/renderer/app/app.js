@@ -1,5 +1,6 @@
 // 主程序壳：页面注册与导航切换、弹窗与确认对话框、数据变更刷新。
 import { renderTodosPage } from './pages/todos.js';
+import { renderCategoriesPage } from './pages/categories.js';
 
 const pages = {};
 let current = 'todos';
@@ -64,4 +65,5 @@ document.getElementById('showWidget').addEventListener('click', () => {
 window.todoDesk.onDataChange(() => showPage(current));
 
 registerPage('todos', renderTodosPage);
+registerPage('categories', renderCategoriesPage);
 showPage('todos');
