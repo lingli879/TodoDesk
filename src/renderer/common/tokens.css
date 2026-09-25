@@ -27,3 +27,9 @@
     --shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
   }
 }
+
+/* 键盘焦点可见性（全应用统一） */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
