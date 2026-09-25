@@ -2,25 +2,25 @@
 <html lang="zh-CN">
 <meta charset="utf-8">
 <title>TodoDesk 桌面贴</title>
-<style>
-  html, body { margin: 0; height: 100%; background: transparent; }
-  body { font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif; }
-  #panel {
-    height: 100%;
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.55);
-    border: 1px solid rgba(34, 48, 43, 0.08);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #22302B;
-    font-size: 13px;
-  }
-  @media (prefers-color-scheme: dark) {
-    #panel { background: rgba(30, 43, 39, 0.55); color: #E8F1ED; border-color: rgba(232, 241, 237, 0.1); }
-  }
-</style>
+<link rel="stylesheet" href="../common/tokens.css">
+<link rel="stylesheet" href="widget.css">
 <body>
-  <div id="panel">桌面贴占位</div>
+  <div id="panel">
+    <header id="dragHandle">
+      <span class="app">待办</span>
+      <span id="count"></span>
+    </header>
+    <main id="list"></main>
+    <section id="done" hidden>
+      <details open>
+        <summary>已完成（今天）<span id="doneCount"></span></summary>
+        <ul id="doneList"></ul>
+      </details>
+    </section>
+    <div id="detailLayer" hidden></div>
+    <div id="ctxMenu" hidden></div>
+    <div id="confirmBox" hidden></div>
+  </div>
+  <script type="module" src="widget.js"></script>
 </body>
 </html>

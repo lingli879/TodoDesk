@@ -1,0 +1,208 @@
+/* 桌面贴样式：半透明圆角面板，抓标题区/分组头拖动窗体 */
+html, body { margin: 0; height: 100%; background: transparent; }
+
+body {
+  font-family: var(--font);
+  font-size: 13px;
+  color: var(--ink);
+  overflow: hidden;
+  user-select: none;
+}
+
+#panel {
+  --panel-alpha: 0.85;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--surface) calc(var(--panel-alpha) * 100%), transparent);
+  border: 1px solid var(--hairline);
+  box-shadow: var(--shadow);
+  transition: background 0.15s ease;
+}
+
+#panel:hover { --panel-alpha: 0.95; }
+
+#dragHandle {
+  -webkit-app-region: drag;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 6px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+#dragHandle .app { font-weight: 600; letter-spacing: 0.05em; }
+#count { font-variant-numeric: tabular-nums; }
+
+#list { flex: 1; overflow-y: auto; padding: 0 8px 8px; }
+
+.group-head {
+  -webkit-app-region: drag;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 6px 4px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.group-head .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+
+ul.rows { list-style: none; margin: 0; padding: 0; }
+
+.todo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 2px 6px;
+  border-radius: var(--radius);
+}
+
+.todo:hover { background: var(--accent-tint); }
+
+.todo .grip {
+  flex: none;
+  width: 14px;
+  color: var(--ink-soft);
+  cursor: grab;
+  opacity: 0;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.todo:hover .grip { opacity: 0.85; }
+.todo.dragging { opacity: 0.45; }
+
+.todo input[type="checkbox"] {
+  appearance: none;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1.5px solid var(--ink-soft);
+  border-radius: 5px;
+  cursor: pointer;
+  position: relative;
+}
+
+.todo input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.todo input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 4.5px;
+  top: 1.5px;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.todo .title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+  line-height: 1.4;
+  padding: 3px 0;
+}
+
+.todo .more {
+  flex: none;
+  border: none;
+  background: none;
+  color: var(--ink-soft);
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+
+.todo:hover .more { opacity: 1; }
+.todo .more:hover { color: var(--ink); background: var(--surface); }
+
+.todo.done .title {
+  text-decoration: line-through;
+  color: var(--ink-soft);
+}
+
+.todo .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.todo .dot.overdue { background: var(--danger); }
+
+/* 内联编辑行（新建/改名共用） */
+li.editing { display: flex; padding: 2px 6px; }
+
+li.editing input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  padding: 5px 8px;
+  border-radius: var(--radius);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+#empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--ink-soft);
+}
+
+/* 已完成折叠区 */
+#done { padding: 0 8px 8px; }
+#done details { font-size: 12px; color: var(--ink-soft); }
+#done summary {
+  -webkit-app-region: drag;
+  cursor: default;
+  padding: 6px;
+  list-style: none;
+  display: flex;
+  gap: 6px;
+}
+#done summary::before { content: "▸"; transition: transform 0.15s; }
+#done details[open] summary::before { transform: rotate(90deg); }
+#doneList { list-style: none; margin: 0; padding: 0; }
+
+#doneList .todo { opacity: 0.75; }
+#doneList .todo .time {
+  font-size: 11px;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+/* 滚动条 */
+#list::-webkit-scrollbar, #doneList::-webkit-scrollbar { width: 6px; }
+#list::-webkit-scrollbar-thumb, #doneList::-webkit-scrollbar-thumb {
+  background: var(--hairline);
+  border-radius: 3px;
+}
+
+/* 完成庆祝动效：涟漪 + 划线 + 沉底（全应用唯一的庆祝时刻） */
+@keyframes celebrate-ripple {
+  from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); }
+  to { box-shadow: 0 0 0 14px transparent; }
+}
+
+.todo.celebrate { animation: celebrate-ripple 0.4s ease-out; }
+.todo.celebrate .title { text-decoration: line-through; color: var(--ink-soft); transition: color 0.4s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .todo.celebrate { animation: none; }
+  #panel, #done summary::before { transition: none; }
+}
