@@ -71,9 +71,34 @@ function saveStateNow() {
   }
 }
 
-// ---- 以下为接线占位，Task 6/7 替换为真实实现 ----
-function createWidget() {}
+// ---- 窗口管理 ----
+const { createWidgetWindow, applyHotkey } = require('./widget-window');
+
+let widgetWin = null;
+
+function createWidget() {
+  widgetWin = createWidgetWindow({
+    getSettings: () => state.settings,
+    onRectChanged: ({ position, size }) => {
+      state.settings.widgetPosition = position;
+      state.settings.widgetSize = size;
+      saveStateNow();
+    },
+  });
+  widgetWin.on('closed', () => { widgetWin = null; });
+  const ok = applyHotkey(state.settings.hotkey, toggleWidget);
+  if (!ok) logger.write(dataDir, `快捷键注册失败：${state.settings.hotkey}`);
+}
+
+function showWidget() {
+  if (widgetWin && !widgetWin.isDestroyed()) widgetWin.show();
+}
+
+function toggleWidget() {
+  if (!widgetWin || widgetWin.isDestroyed()) { showWidget(); return; }
+  if (widgetWin.isVisible()) widgetWin.hide();
+  else widgetWin.show();
+}
+
+// Task 7 接入：主程序窗口
 function showMainWindow() {}
-function showWidget() {}
-function toggleWidget() {}
-function broadcast() {}
