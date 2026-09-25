@@ -208,48 +208,6 @@ li.editing input {
 
 .detail-inner { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; }
 
-.todo-form { display: flex; flex-direction: column; gap: 10px; }
-
-.todo-form .field { display: flex; flex-direction: column; gap: 4px; }
-.todo-form .field-label { font-size: 11px; color: var(--ink-soft); }
-
-.todo-form input[type="text"], .todo-form select, .todo-form textarea, .todo-form input[type="datetime-local"] {
-  font: inherit;
-  color: var(--ink);
-  background: var(--surface);
-  border: 1px solid var(--hairline);
-  border-radius: 8px;
-  padding: 6px 10px;
-  outline: none;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.todo-form input:focus, .todo-form select:focus, .todo-form textarea:focus {
-  border-color: var(--accent);
-}
-
-.datetime-inline { display: flex; align-items: center; gap: 8px; }
-.datetime-inline input[type="datetime-local"] { flex: 1; }
-.datetime-inline .done-label { font-size: 12px; color: var(--ink-soft); }
-
-.form-error { color: var(--danger); font-size: 12px; min-height: 16px; }
-
-.detail-bar { display: flex; justify-content: flex-end; gap: 8px; }
-
-.detail-bar button {
-  font: inherit;
-  padding: 6px 16px;
-  border-radius: 8px;
-  border: 1px solid var(--hairline);
-  background: var(--surface);
-  color: var(--ink);
-  cursor: pointer;
-}
-
-.detail-bar button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.detail-bar button.danger { color: var(--danger); }
-
 /* 右键菜单（贴内自绘） */
 #ctxMenu {
   position: absolute;

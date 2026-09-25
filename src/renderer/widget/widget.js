@@ -358,7 +358,7 @@ export async function openDetail(todoId) {
   const close = document.createElement('button');
   close.textContent = '关闭';
   const bar = document.createElement('div');
-  bar.className = 'detail-bar';
+  bar.className = 'form-bar';
   bar.append(del, close, save);
 
   const inner = document.createElement('div');

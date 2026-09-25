@@ -32,13 +32,16 @@ export function createTodoForm({ todo = null, categories = [], now = new Date().
   optNone.value = '';
   optNone.textContent = '未分类';
   els.category.append(optNone);
-  for (const c of [...categories].sort((a, b) => a.sortOrder - b.sortOrder)) {
+  const sorted = [...categories].sort((a, b) => a.sortOrder - b.sortOrder);
+  for (const c of sorted) {
     const o = document.createElement('option');
     o.value = c.id;
     o.textContent = c.name;
     els.category.append(o);
   }
-  els.category.value = todo && todo.categoryId ? todo.categoryId : '';
+  // 新建默认：分类=第一个分类；编辑：保持原分类
+  els.category.value = todo && todo.categoryId ? todo.categoryId
+    : (sorted[0] ? sorted[0].id : '');
   field('分类', els.category);
 
   els.notes = document.createElement('textarea');
@@ -55,7 +58,9 @@ export function createTodoForm({ todo = null, categories = [], now = new Date().
     t.textContent = labelText;
     const input = document.createElement('input');
     input.type = 'datetime-local';
-    input.value = todo && todo[key] ? isoToLocalInput(todo[key]) : '';
+    // 新建默认：开始时间=创建时刻（now）；其余时间留空
+    input.value = todo && todo[key] ? isoToLocalInput(todo[key])
+      : (!todo && key === 'startTime' ? isoToLocalInput(now) : '');
     els[key] = input;
     if (key === 'endTime') {
       const cb = document.createElement('input');

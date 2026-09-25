@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<title>TodoDesk</title>
+<link rel="stylesheet" href="../common/tokens.css">
+<link rel="stylesheet" href="../common/form.css">
+<link rel="stylesheet" href="app.css">
+<body>
+  <div id="shell">
+    <aside>
+      <div class="brand">TodoDesk</div>
+      <nav>
+        <button data-page="todos" class="active">待办</button>
+        <button data-page="categories">分类</button>
+        <button data-page="settings">设置</button>
+      </nav>
+      <div class="spacer"></div>
+      <button id="showWidget" class="ghost">显示桌面贴</button>
+    </aside>
+    <main id="page"></main>
+  </div>
+  <div id="modalLayer" hidden></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

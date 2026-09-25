@@ -1,0 +1,42 @@
+/* 共享待办表单样式（桌面贴详情面板与主程序编辑弹窗共用） */
+.todo-form { display: flex; flex-direction: column; gap: 10px; }
+
+.todo-form .field { display: flex; flex-direction: column; gap: 4px; }
+.todo-form .field-label { font-size: 11px; color: var(--ink-soft); }
+
+.todo-form input[type="text"], .todo-form select, .todo-form textarea, .todo-form input[type="datetime-local"] {
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 6px 10px;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.todo-form input:focus, .todo-form select:focus, .todo-form textarea:focus {
+  border-color: var(--accent);
+}
+
+.datetime-inline { display: flex; align-items: center; gap: 8px; }
+.datetime-inline input[type="datetime-local"] { flex: 1; }
+.datetime-inline .done-label { font-size: 12px; color: var(--ink-soft); }
+
+.form-error { color: var(--danger); font-size: 12px; min-height: 16px; }
+
+.form-bar { display: flex; justify-content: flex-end; gap: 8px; }
+
+.form-bar button {
+  font: inherit;
+  padding: 6px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--hairline);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.form-bar button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.form-bar button.danger { color: var(--danger); }
