@@ -10,3 +10,6 @@ out/
 *.log
 .DS_Store
 Thumbs.db
+
+# 本仓库 build/ 是图标资源目录（被全局 gitignore 误伤，反制之）
+!build/
