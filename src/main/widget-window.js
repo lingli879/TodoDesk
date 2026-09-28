@@ -88,20 +88,10 @@ function setupLayering(win) {
     if (!hasVisibleAppWindow()) { applyTopmost(true); return; }
     setTimeout(() => attemptShowDesktop(n + 1), 150);
   };
-  // 取消方向对称处理：按钮恢复时信号可能是 lp=0（前台无窗口接管）而窗口已恢复——
-  // 渐进验证「窗口回来了」即取消置顶；lp=窗口接管时立即取消。
-  const attemptRestore = (n) => {
-    if (!desktopMode || win.isDestroyed() || n > 6) return;
-    if (hasVisibleAppWindow()) { applyTopmost(false); return; }
-    setTimeout(() => attemptRestore(n + 1), 150);
-  };
   const shellProc = koffi.register((h, msg, wp, lp) => {
     if (msg === WM_SHELLHOOK && wp === HSHELL_WINDOWACTIVATED && !win.isDestroyed()) {
-      if (lp !== 0 && desktopMode) applyTopmost(false); // 窗口明确接管：立即取消置顶
-      else if (lp === 0) {
-        if (!desktopMode) attemptShowDesktop(0); // 无窗口激活：可能进入显示桌面
-        else attemptRestore(0); // 已置顶态又见无窗口激活：可能正在恢复（窗口渐回）
-      }
+      if (lp === 0 && !desktopMode) attemptShowDesktop(0);
+      else if (lp !== 0 && desktopMode) applyTopmost(false); // 窗口接管：立即取消置顶
     }
     return CallWindowProcW(prevProc, h, msg, wp, lp);
   }, koffi.pointer(WndProcCb));
