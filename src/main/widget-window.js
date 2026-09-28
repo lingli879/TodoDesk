@@ -92,8 +92,12 @@ function startWinDGuard(win) {
     const now = Date.now();
     if (observed === stable) { pending = null; return; }
     if (!pending || pending.value !== observed) pending = { value: observed, since: now };
-    if (now - pending.since >= 250) {
-      // 状态持续 250ms：一次稳定的「显示桌面切换」——翻转 toggle 并按新值执行
+    // 方向性确认时长：进入桌面需稳定 250ms（防收起动画中间态误判）；
+    // 退出桌面快切（40ms）——窗口出现是明确信号，慢了桌面贴会在恢复动画期间
+    // 置顶浮在窗口前面闪一下才沉底
+    const needMs = observed ? 250 : 40;
+    if (now - pending.since >= needMs) {
+      // 一次稳定的「显示桌面切换」——翻转 toggle 并按新值执行
       stable = observed;
       toggle = !toggle;
       pending = null;
