@@ -35,10 +35,11 @@ function main() {
     if (decision === 'abort') { try { fs.unlinkSync(hist); } catch { /* 尽力 */ } process.exit(0); }
     times.push(Date.now());
     try { fs.writeFileSync(hist, JSON.stringify(times)); } catch { /* 尽力 */ }
-    // 剥离 RUN_AS_NODE：新进程必须以 Electron 应用模式启动（继承自本看门狗的 env 会带上它）
+    // 剥离 RUN_AS_NODE：新进程必须以 Electron 应用模式启动（继承自本看门狗的 env 会带上它）。
+    // 不设 cwd：打包态 appDir 是 asar 文件路径，不能作 cwd（spawn 会失败）。
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
-    spawn(process.execPath, [appDir], { env, detached: true, stdio: 'ignore', cwd: appDir }).unref();
+    spawn(process.execPath, [appDir], { env, detached: true, stdio: 'ignore' }).unref();
     process.exit(0);
   }, 2000);
 }

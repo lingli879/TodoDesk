@@ -5,7 +5,7 @@
 
 function chooseHost({ progman, workerW }) {
   if (workerW) return workerW; // 首选：图标层之下的 WorkerW，不遮挡桌面图标
-  if (progman) return progman; // 退化：直接附 Progman（此时会浮在图标之上，罕见配置）
+  if (progman) return progman; // 退化：直接附 Progman（相对图标层的 z 序未实证，罕见配置）
   return null;                 // 找不到桌面层：保持普通顶层窗口（仍会被 Win+D 波及）
 }
 
@@ -68,8 +68,8 @@ function findDesktopHost() {
 }
 
 function readHwnd(win) {
-  const buf = win.getNativeWindowHandle();
-  return process.arch === 'x64' ? Number(buf.readBigUInt64LE(0)) : buf.readUInt32LE(0);
+  // USER 句柄表 32 位（Chromium HWNDToUint32 同假设），x64/arm64 统一低 32 位即可
+  return win.getNativeWindowHandle().readUInt32LE(0);
 }
 
 // 附着桌面贴到桌面层；onLost 在 HWND 被外部销毁（Explorer 重启连带 WorkerW 销毁）时回调一次。
