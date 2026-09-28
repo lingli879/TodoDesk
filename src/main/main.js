@@ -169,7 +169,7 @@ function showWidget() {
       widgetWin.setBounds(fit);
     }
     widgetWin.show();
-    widgetWin.layering?.rise(); // 用户主动调出：浮到普通层顶部（失焦后自动沉底）
+    // widgetWin.layering?.rise(); // 焦点驱动暂注释：验证 Win+D 期间不启用
   }
 }
 

@@ -48,19 +48,17 @@ function setupLayering(win) {
   };
   const rise = () => { try { win.moveTop(); } catch { /* 窗口竞态 */ } };
 
-  // ---- 焦点驱动：点击/调出 → 顶部；点别的窗口 → 沉底（置顶豁免期间不沉）----
-  win.on('focus', rise);
-  win.on('blur', () => { if (!toggle) sink(); });
+  // ---- 焦点驱动上浮/下沉：暂时注释（用户要求先验证纯 Win+D），验证后再恢复 ----
+  // win.on('focus', rise);
+  // win.on('blur', () => { if (!toggle) sink(); });
 
-  // ---- Win+D toggle：只管置顶豁免，不管沉底 ----
+  // ---- Win+D toggle：置顶豁免 + 非豁免时原子沉底 ----
   const apply = () => {
     try {
       if (toggle) {
         win.setAlwaysOnTop(true, 'screen-saver');
-      } else if (win.isFocused()) {
-        win.setAlwaysOnTop(false); // 取消豁免；用户正操作着（有焦点）→ 留在普通层顶部
       } else {
-        sink(); // 无焦点：原子取消置顶并回沉底常态
+        sink(); // 原子取消置顶并沉底（无「普通层顶部」中间帧）
       }
     } catch { /* 窗口竞态：下次事件自愈 */ }
   };
@@ -116,7 +114,10 @@ function setupLayering(win) {
     koffi.unregister(hookCb);
   });
 
-  return { sink, rise };
+  return {
+    sink,
+    // rise, // 焦点驱动暂注释：验证 Win+D 期间不暴露
+  };
 }
 
 function bottomRight(workArea, size) {
