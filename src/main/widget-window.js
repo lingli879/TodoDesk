@@ -167,7 +167,7 @@ function createWidgetWindow({ getSettings, onRectChanged }) {
   const layering = setupLayering(win);
   win.once('ready-to-show', () => {
     win.show();
-    // layering.sink(); // 启动即沉底（暂注释：验证纯置顶切换期间不启用任何下沉）
+    layering.sink(); // 启动即沉底（贴桌面层级）
   });
   win.layering = layering; // main.js 显示/切换桌面贴时 rise() 用
   return win;
