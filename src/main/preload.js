@@ -44,6 +44,14 @@ contextBridge.exposeInMainWorld('todoDesk', {
     show: invoke('widget:show'),
     hide: invoke('widget:hide'),
     toggle: invoke('widget:toggle'),
+    // 拖动/缩放：附着桌面层后系统的 HTCAPTION/HTBORDER 循环失效，走应用层高频单向推送
+    beginDrag: (p) => ipcRenderer.send('widget:begin-drag', p),
+    dragMove: (p) => ipcRenderer.send('widget:drag-move', p),
+    endDrag: () => ipcRenderer.send('widget:end-drag'),
+    beginResize: (p) => ipcRenderer.send('widget:begin-resize', p),
+    resizeMove: (p) => ipcRenderer.send('widget:resize-move', p),
+    endResize: () => ipcRenderer.send('widget:end-resize'),
+    setEditing: (v) => ipcRenderer.send('widget:set-editing', v),
   },
   detail: {
     open: invoke('detail:open'),

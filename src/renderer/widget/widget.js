@@ -344,5 +344,46 @@ panel.addEventListener('contextmenu', (e) => e.preventDefault());
 window.todoDesk.onDataChange(() => { refresh(); });
 window.todoDesk.onSettingsChange(() => { applyOpacity(); refresh(); });
 
+// ---- 窗口拖动/缩放（附着桌面层后系统的 HTCAPTION/HTBORDER 循环失效，走 IPC 应用层实现）----
+// 按下时上报屏幕坐标，主进程记录窗口基准并按增量 setPosition/setSize。
+function windowDrag(el) {
+  el.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    window.todoDesk.widget.beginDrag({ screenX: e.screenX, screenY: e.screenY });
+    const move = (ev) => window.todoDesk.widget.dragMove({ screenX: ev.screenX, screenY: ev.screenY });
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      window.todoDesk.widget.endDrag();
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  });
+}
+windowDrag(document.getElementById('dragHandle'));
+
+// 编辑态上报：input 聚焦时主进程临时恢复窗口可聚焦（NOACTIVATE 形态收不到键盘），失焦恢复
+document.addEventListener('focusin', (e) => {
+  if (e.target.matches('input, textarea')) window.todoDesk.widget.setEditing(true);
+});
+document.addEventListener('focusout', () => window.todoDesk.widget.setEditing(false));
+const doneSummary = document.querySelector('#done summary');
+if (doneSummary) windowDrag(doneSummary);
+
+document.getElementById('resizeHandle').addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  e.stopPropagation();
+  window.todoDesk.widget.beginResize({ screenX: e.screenX, screenY: e.screenY });
+  const move = (ev) => window.todoDesk.widget.resizeMove({ screenX: ev.screenX, screenY: ev.screenY });
+  const up = () => {
+    window.removeEventListener('mousemove', move);
+    window.removeEventListener('mouseup', up);
+    window.todoDesk.widget.endResize();
+  };
+  window.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', up);
+});
+
 refresh();
 applyOpacity();

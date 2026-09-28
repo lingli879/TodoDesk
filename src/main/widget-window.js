@@ -1,6 +1,6 @@
 'use strict';
-// 桌面贴窗口：透明/无边框/可缩放、多屏位置恢复、矩形去抖持久化、全局快捷键。
-// Win+D 免疫：skipTaskbar 工具窗被「显示桌面」跳过（Win11 实测）；minimize→restore 兜底个别波及的场景。
+// 桌面贴窗口：透明/无边框/不抢焦点（WS_EX_NOACTIVATE，Win+D「显示桌面」不波及）/可缩放、多屏位置恢复、矩形去抖持久化、全局快捷键。
+// 拖动/缩放走应用层 IPC（见 main.js）：桌面歌词类软件的通用形态。
 const { BrowserWindow, screen, globalShortcut } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -39,6 +39,7 @@ function createWidgetWindow({ getSettings, onRectChanged }) {
     resizable: true,
     alwaysOnTop: false, // 普通窗口层级，不遮挡其他应用；透明度由 CSS --panel-alpha 控制
     skipTaskbar: true,
+    focusable: false, // WS_EX_NOACTIVATE：不抢焦点 + Win+D「显示桌面」不最小化（桌面歌词式，实测）
     show: false,
     webPreferences: fs.existsSync(preloadPath) ? { preload: preloadPath } : {},
   });
@@ -55,8 +56,8 @@ function createWidgetWindow({ getSettings, onRectChanged }) {
   };
   win.on('moved', persist);
   win.on('resized', persist);
-  // Win+D 兜底：桌面贴无任务栏按钮，正常情况下「显示桌面」会跳过它；
-  // 个别环境仍把它最小化时立即弹回（无任务栏按钮 = 用户没有主动最小化的常规途径，误伤为零）。
+  // Win+D 兜底：正常形态（NOACTIVATE+skipTaskbar）下「显示桌面」不波及；
+  // 个别环境仍把它最小化时立即弹回（无任务栏按钮 = 用户没有主动最小化的常规途径，误伤为零）
   win.on('minimize', () => win.restore());
   win.once('ready-to-show', () => win.show());
   return win;
@@ -72,4 +73,4 @@ function applyHotkey(accel, onToggle) {
   }
 }
 
-module.exports = { createWidgetWindow, applyHotkey };
+module.exports = { createWidgetWindow, applyHotkey, MIN_SIZE };

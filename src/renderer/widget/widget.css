@@ -20,6 +20,7 @@ body {
 
 #panel {
   --panel-alpha: 0.55; /* 与 DEFAULT_SETTINGS.widgetOpacity 同步；运行时 applyOpacity 会按用户设置覆盖 */
+  position: relative; /* #resizeHandle 的定位上下文 */
   height: 100%;
   box-sizing: border-box;
   display: flex;
@@ -30,8 +31,8 @@ body {
   transition: background 0.15s ease;
 }
 
+/* 拖动走应用层 IPC（附着桌面层后 -webkit-app-region 的系统循环失效），见 widget.js */
 #dragHandle {
-  -webkit-app-region: drag;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -179,13 +180,26 @@ li.editing input::placeholder { color: var(--ink-soft); }
 #done { padding: 0 8px 8px; }
 #done details { font-size: 12px; color: var(--ink-soft); }
 #done summary {
-  -webkit-app-region: drag;
   cursor: default;
   padding: 6px;
   list-style: none;
   display: flex;
   gap: 6px;
 }
+
+/* 右下角缩放手柄：应用层 IPC 缩放（系统 resizable 边框在桌面层附着态失效） */
+#resizeHandle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  opacity: 0.45;
+  background: linear-gradient(135deg, transparent 50%, var(--ink-soft) 50%);
+  border-bottom-right-radius: var(--radius-lg);
+}
+#resizeHandle:hover { opacity: 0.9; }
 #done summary::before { content: "▸"; transition: transform 0.15s; }
 #done details[open] summary::before { transform: rotate(90deg); }
 #doneList { list-style: none; margin: 0; padding: 0; }

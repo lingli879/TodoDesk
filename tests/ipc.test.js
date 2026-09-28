@@ -7,6 +7,7 @@ function harness() {
   const handlers = {};
   const sent = [];
   const opened = [];
+  const winOps = [];
   const state = seedState('2026-09-25T00:00:00Z');
   const services = {
     getState: () => state,
@@ -17,10 +18,19 @@ function harness() {
     toggleWidget: () => {},
     applyHotkey: () => true,
     openDetail: (id) => { opened.push(id); },
+    beginWidgetDrag: (p) => winOps.push(['begin-drag', p]),
+    dragWidget: (p) => winOps.push(['drag', p]),
+    endWidgetDrag: () => winOps.push(['end-drag']),
+    beginWidgetResize: (p) => winOps.push(['begin-resize', p]),
+    resizeWidgetTo: (p) => winOps.push(['resize', p]),
+    endWidgetResize: () => winOps.push(['end-resize']),
   };
-  registerIpc({ handle: (ch, fn) => { handlers[ch] = fn; } }, services);
+  registerIpc({
+    handle: (ch, fn) => { handlers[ch] = fn; },
+    on: (ch, fn) => { handlers[ch] = fn; },
+  }, services);
   const call = (ch, arg) => handlers[ch]({ sender: {} }, arg);
-  return { handlers, call, state, sent, opened };
+  return { handlers, call, state, sent, opened, winOps };
 }
 
 test('todos:create 校验拒绝空标题', async () => {
@@ -34,6 +44,28 @@ test('detail:open 转发待办 id 给主进程服务', async () => {
   const r = await h.call('detail:open', 't-123');
   assert.equal(r.ok, true);
   assert.deepEqual(h.opened, ['t-123']);
+});
+
+test('widget:begin-drag/drag-move 转发给窗口服务', () => {
+  const h = harness();
+  h.call('widget:begin-drag', { screenX: 10, screenY: 20 });
+  h.call('widget:drag-move', { screenX: 30, screenY: 45 });
+  assert.deepEqual(h.winOps, [
+    ['begin-drag', { screenX: 10, screenY: 20 }],
+    ['drag', { screenX: 30, screenY: 45 }],
+  ]);
+});
+
+test('widget:begin-resize/resize-move/end-resize 顺序转发', () => {
+  const h = harness();
+  h.call('widget:begin-resize', { screenX: 0, screenY: 0 });
+  h.call('widget:resize-move', { screenX: 100, screenY: 60 });
+  h.call('widget:end-resize');
+  assert.deepEqual(h.winOps, [
+    ['begin-resize', { screenX: 0, screenY: 0 }],
+    ['resize', { screenX: 100, screenY: 60 }],
+    ['end-resize'],
+  ]);
 });
 
 test('todos:complete 设 endTime 且幂等', async () => {

@@ -164,6 +164,18 @@ function registerIpc(ipcMain, services) {
   on('widget:toggle', () => services.toggleWidget());
   on('detail:open', (id) => services.openDetail(id));
   on('openDataFolder', () => services.openDataFolder());
+
+  // ---- 桌面贴窗口拖动/缩放（附着桌面层后系统循环失效，应用层单向高频通道）----
+  const recv = (ch, fn) => ipcMain.on(ch, (_event, arg) => {
+    try { fn(arg); } catch { /* 高频通道静默，断点续传由下一次事件承担 */ }
+  });
+  recv('widget:begin-drag', (p) => services.beginWidgetDrag(p));
+  recv('widget:drag-move', (p) => services.dragWidget(p));
+  recv('widget:end-drag', () => services.endWidgetDrag());
+  recv('widget:begin-resize', (p) => services.beginWidgetResize(p));
+  recv('widget:resize-move', (p) => services.resizeWidgetTo(p));
+  recv('widget:end-resize', () => services.endWidgetResize());
+  recv('widget:set-editing', (v) => services.setWidgetEditing?.(v));
 }
 
 module.exports = { registerIpc };
