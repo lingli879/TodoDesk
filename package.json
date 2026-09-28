@@ -28,12 +28,6 @@
         "dir"
       ],
       "icon": "build/icon.ico"
-    },
-    "asarUnpack": [
-      "node_modules/koffi/**"
-    ]
-  },
-  "dependencies": {
-    "koffi": "^3.3.2"
+    }
   }
 }
