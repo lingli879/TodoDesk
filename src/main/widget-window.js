@@ -1,9 +1,10 @@
 'use strict';
-// 桌面贴窗口：透明/无边框/非置顶/可缩放、多屏位置恢复、矩形去抖持久化、全局快捷键。
+// 桌面贴窗口：透明/无边框/钉在桌面层（WorkerW 父化，不受 Win+D 影响）/可缩放、多屏位置恢复、矩形去抖持久化、全局快捷键。
 const { BrowserWindow, screen, globalShortcut } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { fitRectToDisplays, MARGIN } = require('../shared/geometry');
+const { attachWidgetToDesktop } = require('./desktop-host');
 
 const DEFAULT_SIZE = { width: 300, height: 420 };
 const MIN_SIZE = { width: 240, height: 200 };
@@ -15,7 +16,7 @@ function bottomRight(workArea, size) {
   };
 }
 
-function createWidgetWindow({ getSettings, onRectChanged }) {
+function createWidgetWindow({ getSettings, onRectChanged, onWidgetLost }) {
   const s = getSettings();
   const size = s.widgetSize || { ...DEFAULT_SIZE };
   let rect;
@@ -36,7 +37,7 @@ function createWidgetWindow({ getSettings, onRectChanged }) {
     frame: false,
     transparent: true,
     resizable: true,
-    alwaysOnTop: false, // 不置顶：普通窗口层级，不遮挡其他应用；透明度由 CSS --panel-alpha 控制
+    alwaysOnTop: false, // 层级由 WorkerW 父化决定（见 ready-to-show 中 attachWidgetToDesktop）；透明度由 CSS --panel-alpha 控制
     skipTaskbar: true,
     show: false,
     webPreferences: fs.existsSync(preloadPath) ? { preload: preloadPath } : {},
@@ -54,7 +55,12 @@ function createWidgetWindow({ getSettings, onRectChanged }) {
   };
   win.on('moved', persist);
   win.on('resized', persist);
-  win.once('ready-to-show', () => win.show());
+  win.once('ready-to-show', () => {
+    win.show();
+    // 钉在桌面层：父化到 WorkerW，Win+D「显示桌面」不再波及（Rainmeter 式）。
+    // 附着失败（罕见）自动降级为普通顶层窗口，功能不受影响。
+    attachWidgetToDesktop(win, { onLost: onWidgetLost });
+  });
   return win;
 }
 
