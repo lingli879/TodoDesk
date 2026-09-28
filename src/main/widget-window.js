@@ -32,9 +32,6 @@ function setupLayering(win) {
   const IsWindowVisible = lib.func('int IsWindowVisible(intptr_t h)');
   const IsIconic = lib.func('int IsIconic(intptr_t h)');
   const GetWindowLongW = lib.func('int GetWindowLongW(intptr_t h, int i)');
-  const GetWindowRect = lib.func('int GetWindowRect(intptr_t h, long *rc)');
-  const WindowFromPoint = lib.func('intptr_t WindowFromPoint(long x, long y)');
-  const GetAncestor = lib.func('intptr_t GetAncestor(intptr_t h, unsigned int gaFlags)');
 
   const HWND_BOTTOM = 1;
   const SWP_NOSIZE = 0x0001;
@@ -61,60 +58,40 @@ function setupLayering(win) {
   };
 
   // ---- 显示桌面确认（通用，不依赖坐标/分辨率/任务栏位置）----
-  // Shell 的桌面激活信号（lp=0 + 前台=Progman）在「点桌面图标」时也会出现，
-  // 单靠它无法区分。通用判据看效果：显示桌面的本质是「普通窗口从屏幕消失」——
-  // 取一个可见普通窗口，测试其中心点的命中归属：仍命中该窗口=只是点了桌面；
-  // 命中桌面系=窗口被收起（真显示桌面）。
-  const rectOf = (h) => {
-    const p = koffi.alloc('long', 4);
-    GetWindowRect(h, p);
-    return koffi.decode(p, 'long', 4);
-  };
-  const inTree = (target, rootHwnd) => {
-    let c = target, n = 0;
-    while (c && n++ < 12) {
-      if (c === rootHwnd) return true;
-      c = GetAncestor(c, 2 /*GA_ROOT*/); // 与 root 比较到顶层即可
-    }
-    return false;
-  };
-  const confirmShowDesktop = () => {
-    const fg = GetForegroundWindow();
-    if (fg === 0 || fg !== FindWindowW('Progman', null)) return false; // 前台不是桌面
-    let sample = 0;
+  // Shell 的桌面激活信号（lp=0）在「点桌面图标」时也会出现。通用判据看效果：
+  // 显示桌面的本质是「普通窗口全部从屏幕消失」（被最小化/收起）。
+  // 枚举判定「无可见未最小化的应用窗口」即为显示桌面。
+  const hasVisibleAppWindow = () => {
+    let found = false;
     const cb = koffi.register((h) => {
-      if (sample || h === hwnd) return 1;
+      if (found || h === hwnd) return 1;
       const ex = GetWindowLongW(h, -20) >>> 0;
       if (ex & (WS_EX_TOOLWINDOW | WS_EX_TOPMOST)) return 1;
       const style = GetWindowLongW(h, -16) >>> 0;
       if (!(style & WS_VISIBLE) || !IsWindowVisible(h) || IsIconic(h)) return 1;
       if (!((ex & WS_EX_APPWINDOW) || (style & WS_CAPTION))) return 1;
-      const rc = rectOf(h);
-      if (rc[2] - rc[0] < 40 || rc[3] - rc[1] < 40) return 1;
-      sample = h;
+      found = true;
       return 0; // 找到即停
     }, koffi.pointer(EnumWindowsProc));
     try { EnumWindows(cb, 0); } finally { koffi.unregister(cb); }
-    if (!sample) return true; // 屏幕上没有可见普通窗口 = 已是显示桌面状态
-    const [l, t, r, b] = rectOf(sample);
-    const hit = WindowFromPoint((l + r) >> 1, (t + b) >> 1);
-    return !inTree(hit, sample); // 样本窗口位置被桌面接管 = 它被收起
+    return found;
   };
 
   // Shell 钩子：显示桌面切换（键盘 Win+D 与任务栏按钮同源）广播「无窗口激活」（lp=0）
   RegisterShellHookWindow(hwnd);
   const WM_SHELLHOOK = RegisterWindowMessageW('SHELLHOOK');
+  // 渐进重试：首次立即判定（键盘 Win+D 时序快，立即命中即无闪烁）；
+  // 按钮触发时首个信号早于窗口最小化完成——每 150ms 复查，窗口全部消失的瞬间命中
+  //（无固定延迟的空等）。点桌面图标场景窗口始终显示，重试耗尽后放弃。
+  const attemptShowDesktop = (n) => {
+    if (desktopMode || win.isDestroyed() || n > 6) return;
+    if (!hasVisibleAppWindow()) { applyTopmost(true); return; }
+    setTimeout(() => attemptShowDesktop(n + 1), 150);
+  };
   const shellProc = koffi.register((h, msg, wp, lp) => {
     if (msg === WM_SHELLHOOK && wp === HSHELL_WINDOWACTIVATED && !win.isDestroyed()) {
-      if (lp === 0 && !desktopMode) {
-        // 按钮触发的时序：首个信号到达时前台可能还是任务栏、窗口最小化未完成——
-        // 延迟 400ms 等状态稳定再判定（期间 desktopMode 变化则作废）
-        setTimeout(() => {
-          if (!desktopMode && !win.isDestroyed() && confirmShowDesktop()) applyTopmost(true);
-        }, 400);
-      } else if (lp !== 0 && desktopMode) {
-        applyTopmost(false); // 窗口接管：取消置顶
-      }
+      if (lp === 0 && !desktopMode) attemptShowDesktop(0);
+      else if (lp !== 0 && desktopMode) applyTopmost(false); // 窗口接管：立即取消置顶
     }
     return CallWindowProcW(prevProc, h, msg, wp, lp);
   }, koffi.pointer(WndProcCb));
