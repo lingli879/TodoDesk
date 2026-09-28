@@ -47,9 +47,21 @@ function startWinDGuard(win) {
   let pending = null;       // { value, since }：待确认的候选桌面态
   let recheckTimer = null;  // 候选确认的收尾定时（事件处理一部分，非常驻轮询）
 
+  const HWND_BOTTOM = 1;
+  const SWP_NOSIZE = 0x0001;
+  const SWP_NOMOVE = 0x0002;
+  const SWP_NOACTIVATE = 0x0010;
+  const SetWindowPos = lib.func('int SetWindowPos(intptr_t hWnd, intptr_t hWndInsertAfter, int x, int y, int cx, int cy, unsigned int uFlags)');
+
   const apply = () => {
-    try { win.setAlwaysOnTop(toggle, 'screen-saver'); } catch { /* 窗口竞态：下次事件自愈 */ }
+    try {
+      win.setAlwaysOnTop(toggle, 'screen-saver');
+      // 非置顶时沉到普通层底部（贴桌面语义：被应用盖住）；setAlwaysOnTop(false)
+      // 只回普通层但停在顶部，会挡在应用前面
+      if (!toggle) SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE);
+    } catch { /* 窗口竞态：下次事件自愈 */ }
   };
+  apply(); // 启动即归位：不置顶 + 沉底
 
   function isDesktopState() {
     let ordinary = 0;
