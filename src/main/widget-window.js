@@ -77,21 +77,42 @@ function setupLayering(win) {
     return found;
   };
 
-  // Shell 钩子：显示桌面切换（键盘 Win+D 与任务栏按钮同源）广播「无窗口激活」（lp=0）
+  // Shell 信号源：显示桌面切换（键盘 Win+D 与任务栏按钮同源）广播 HSHELL_WINDOWACTIVATED
   RegisterShellHookWindow(hwnd);
   const WM_SHELLHOOK = RegisterWindowMessageW('SHELLHOOK');
-  // 渐进重试：首次立即判定（键盘 Win+D 时序快，立即命中即无闪烁）；
-  // 按钮触发时首个信号早于窗口最小化完成——每 150ms 复查，窗口全部消失的瞬间命中
-  //（无固定延迟的空等）。点桌面图标场景窗口始终显示，重试耗尽后放弃。
-  const attemptShowDesktop = (n) => {
+
+  // ========== 三场景分立的处理逻辑（共用信号源，各自独立） ==========
+  //
+  // 【场景 1：进入显示桌面（Win+D / 按钮）】lp=0 且未置顶 →
+  //   渐进验证「窗口全部消失」→ 置顶。键盘时序快首查即中（无闪）；
+  //   按钮时序慢，每 150ms 复查，在窗口收起完成的瞬间命中（无空等）。
+  const attemptEnter = (n) => {
     if (desktopMode || win.isDestroyed() || n > 6) return;
     if (!hasVisibleAppWindow()) { applyTopmost(true); return; }
-    setTimeout(() => attemptShowDesktop(n + 1), 150);
+    setTimeout(() => attemptEnter(n + 1), 150);
   };
+
+  // 【场景 2：退出显示桌面（Win+D / 按钮 · 恢复）】两个信号形态——
+  //   a) lp=窗口句柄（窗口接管前台）且已置顶 → 立即取消
+  //   b) lp=0 且已置顶（按钮恢复时前台可能无窗口接管）→ 渐进验证「窗口回来了」→ 取消
+  const attemptLeave = (n) => {
+    if (!desktopMode || win.isDestroyed() || n > 6) return;
+    if (hasVisibleAppWindow()) { applyTopmost(false); return; }
+    setTimeout(() => attemptLeave(n + 1), 150);
+  };
+
+  // 【场景 3：点桌面图标/空白】lp=0 且未置顶 → 与场景 1 共用验证路径，
+  //   但窗口始终显示 → 渐进验证 6 次全失败 → 安静放弃（不置顶）。
+  //   （由 attemptEnter 的 hasVisibleAppWindow 结果天然区分，无独立代码）
+
   const shellProc = koffi.register((h, msg, wp, lp) => {
     if (msg === WM_SHELLHOOK && wp === HSHELL_WINDOWACTIVATED && !win.isDestroyed()) {
-      if (lp === 0 && !desktopMode) attemptShowDesktop(0);
-      else if (lp !== 0 && desktopMode) applyTopmost(false); // 窗口接管：立即取消置顶
+      if (lp !== 0) {
+        if (desktopMode) applyTopmost(false);            // 场景 2a：窗口接管，立即取消
+      } else {
+        if (desktopMode) attemptLeave(0);                // 场景 2b：置顶态，验证窗口恢复
+        else attemptEnter(0);                            // 场景 1 / 场景 3：验证窗口全消失
+      }
     }
     return CallWindowProcW(prevProc, h, msg, wp, lp);
   }, koffi.pointer(WndProcCb));
