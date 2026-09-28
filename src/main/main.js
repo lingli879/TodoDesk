@@ -1,7 +1,9 @@
 'use strict';
 // TodoDesk 主进程入口：单实例、数据目录、托盘、双窗口、IPC 注册、生命周期。
 const { app, dialog, ipcMain, shell, Tray, Menu, nativeImage, Notification, screen } = require('electron');
+const fs = require('node:fs');
 const path = require('node:path');
+const { spawn } = require('node:child_process');
 const store = require('../shared/store');
 const { fitRectToDisplays } = require('../shared/geometry');
 const logger = require('./logger');
@@ -83,6 +85,22 @@ async function bootstrap() {
     setAutoLaunch: (v) => app.setLoginItemSettings({ openAtLogin: !!v }),
     openDetail,
   });
+  startWatchdog();
+}
+
+// 看门狗：主进程暴毙（explorer 强杀连带桌面贴死锁等）后自动拉起应用。
+// 以 ELECTRON_RUN_AS_NODE 运行于同一 exe，探活 ppid；优雅退出用标记文件区分。
+function startWatchdog() {
+  const mark = path.join(dataDir, '.graceful-exit');
+  try { fs.unlinkSync(mark); } catch { /* 无残留 */ }
+  const env = {
+    ...process.env,
+    ELECTRON_RUN_AS_NODE: '1',
+    TD_WATCHDOG_PPID: String(process.pid),
+    TD_WATCHDOG_MARK: mark,
+    TD_WATCHDOG_APP: app.getAppPath(),
+  };
+  spawn(process.execPath, [path.join(__dirname, 'watchdog.js')], { env, detached: true, stdio: 'ignore' }).unref();
 }
 
 function saveStateNow() {
@@ -188,6 +206,8 @@ function createTray() {
 
 function exitApp() {
   quitting = true;
+  // 优雅退出标记：看门狗据此不复活
+  try { fs.writeFileSync(path.join(dataDir, '.graceful-exit'), String(Date.now())); } catch { /* 尽力 */ }
   if (widgetWin && !widgetWin.isDestroyed()) widgetWin.destroy();
   if (mainWin && !mainWin.isDestroyed()) mainWin.destroy();
   const detail = getDetailWindow();

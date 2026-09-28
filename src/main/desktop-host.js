@@ -72,18 +72,24 @@ function readHwnd(win) {
   return process.arch === 'x64' ? Number(buf.readBigUInt64LE(0)) : buf.readUInt32LE(0);
 }
 
-// 附着桌面贴到桌面层；onLost 在 HWND 被外部销毁（Explorer 重启连带 WorkerW 销毁）时回调一次
+// 附着桌面贴到桌面层；onLost 在 HWND 被外部销毁（Explorer 重启连带 WorkerW 销毁）时回调一次。
+// 附着失败（如看门狗拉起早于 Explorer 就绪）时由轮询自动重试，成功为止。
 function attachWidgetToDesktop(win, { onLost } = {}) {
   const { SetParent, IsWindow } = u32();
   const hwnd = readHwnd(win);
   let attached = false;
-  const host = findDesktopHost();
-  if (host) {
-    try { SetParent(hwnd, host); attached = true; } catch { /* 附着失败：降级为普通顶层窗口 */ }
-  }
+  const tryAttach = () => {
+    if (attached) return;
+    const host = findDesktopHost();
+    if (host) {
+      try { SetParent(hwnd, host); attached = true; } catch { /* 下轮再试 */ }
+    }
+  };
+  tryAttach();
   const timer = setInterval(() => {
     if (win.isDestroyed()) { stop(); return; }
-    if (!IsWindow(hwnd)) { stop(); if (onLost) onLost(); }
+    if (!IsWindow(hwnd)) { stop(); if (onLost) onLost(); return; }
+    if (!attached) tryAttach(); // Explorer 尚未就绪：重试附着
   }, POLL_MS);
   function stop() { clearInterval(timer); }
   return { attached, stop };
