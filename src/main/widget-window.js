@@ -52,7 +52,7 @@ function setupLayering(win) {
   SystemParametersInfoW(48 /*SPI_GETWORKAREA*/, 0, waBuf, 0);
   const [, , , waBottom] = koffi.decode(waBuf, 'long', 4);
   const screenW = GetSystemMetrics(0 /*SM_CXSCREEN*/);
-  const BTN_X = screenW - 20; // 「显示桌面」按钮在任务栏最右缘的窄条
+  const BTN_X = screenW - 26; // 按钮 + 点击容差 // 「显示桌面」按钮在任务栏最右缘的窄条
 
   let prevCombo = false;
   let prevBtn = false;
@@ -62,8 +62,10 @@ function setupLayering(win) {
     const combo = !!(GetAsyncKeyState(VK_LWIN) & 0x8000) && !!(GetAsyncKeyState(VK_D) & 0x8000);
     if (combo && !prevCombo) flip();
     prevCombo = combo;
-    // 任务栏「显示桌面」按钮：左键按下边沿 + 光标在按钮区域
-    const btnDown = !!(GetAsyncKeyState(VK_LBUTTON) & 0x8000);
+    // 任务栏「显示桌面」按钮：左键按下 + 光标在按钮区域。
+    // bit0(0x1)=自上次调用以来按过（捕获快于轮询间隔的快速点击），0x8000=当前按住
+    const st = GetAsyncKeyState(VK_LBUTTON);
+    const btnDown = !!(st & 0x8000) || !!(st & 0x1);
     if (btnDown && !prevBtn) {
       const pt = koffi.alloc('long', 2);
       GetCursorPos(pt);
