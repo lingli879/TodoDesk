@@ -32,7 +32,9 @@ function setupLayering(win) {
   };
   const rise = () => { try { win.moveTop(); } catch { /* 窗口竞态 */ } };
 
-  // ---- 仅 Win+D：组合键边沿 → toggle 置顶（用户验证过的实现） ----
+  // ---- 仅 Win+D：组合键边沿 → toggle（用户验证过的实现） ----
+  // 进桌面：置顶豁免收起。恢复：单次原子沉底（HWND_BOTTOM 隐含摘除 topmost 位，
+  // 无「普通层顶部」中间帧——只取消置顶不沉底会悬在应用前面）
   let desktopMode = false;
   let prevCombo = false;
   const timer = setInterval(() => {
@@ -40,7 +42,10 @@ function setupLayering(win) {
     const combo = !!(GetAsyncKeyState(VK_LWIN) & 0x8000) && !!(GetAsyncKeyState(VK_D) & 0x8000);
     if (combo && !prevCombo) {
       desktopMode = !desktopMode;
-      try { win.setAlwaysOnTop(desktopMode, 'screen-saver'); } catch { /* 窗口竞态 */ }
+      try {
+        if (desktopMode) win.setAlwaysOnTop(true, 'screen-saver');
+        else sink();
+      } catch { /* 窗口竞态 */ }
     }
     prevCombo = combo;
   }, 20);
