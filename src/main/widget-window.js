@@ -55,10 +55,14 @@ function startWinDGuard(win) {
 
   const apply = () => {
     try {
-      win.setAlwaysOnTop(toggle, 'screen-saver');
-      // 非置顶时沉到普通层底部（贴桌面语义：被应用盖住）；setAlwaysOnTop(false)
-      // 只回普通层但停在顶部，会挡在应用前面
-      if (!toggle) SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE);
+      if (toggle) {
+        win.setAlwaysOnTop(true, 'screen-saver');
+      } else {
+        // 单次原子操作：取消置顶并直接落到普通层底部（HWND_BOTTOM 隐含摘除 topmost 位）。
+        // 分两步（先 setAlwaysOnTop(false) 再沉底）会在普通层顶部留一帧——
+        // 恢复窗口时桌面贴先闪现在最前再沉底，即用户看到的「先消失再出现」
+        SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE);
+      }
     } catch { /* 窗口竞态：下次事件自愈 */ }
   };
   apply(); // 启动即归位：不置顶 + 沉底
