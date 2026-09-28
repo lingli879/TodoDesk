@@ -12,11 +12,7 @@ body {
   color: var(--ink);
 }
 
-/* 白底覆盖层（详情/确认气泡/右键菜单）恢复主题字色，避免白底白字 */
-#confirmBox { --ink: #22302B; --ink-soft: #5C6E68; }
-@media (prefers-color-scheme: dark) {
-  #confirmBox { --ink: #E8F1ED; --ink-soft: #9AB0A8; }
-}
+/* 确认气泡延续白字透明风（深色玻璃卡），无需恢复主题字色 */
 
 #panel {
   --panel-alpha: 0.55; /* 与 DEFAULT_SETTINGS.widgetOpacity 同步；运行时 applyOpacity 会按用户设置覆盖 */
@@ -222,7 +218,7 @@ li.editing input::placeholder { color: var(--ink-soft); }
   border-radius: 3px;
 }
 
-/* 确认气泡（贴内自绘，替代原生对话框）：居中紧凑卡片，不整面遮挡 */
+/* 确认气泡（贴内自绘，替代原生对话框）：居中紧凑深色玻璃卡 + 白字，与面板气质一致 */
 #confirmBox {
   position: absolute;
   left: 50%;
@@ -235,29 +231,36 @@ li.editing input::placeholder { color: var(--ink-soft); }
   padding: 14px 18px;
   max-width: calc(100% - 32px);
   border-radius: var(--radius);
-  background: color-mix(in srgb, var(--surface) 98%, transparent);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35); /* 弹出物加轻阴影区分层级（面板本身无阴影） */
+  background: rgba(8, 12, 10, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.14);
 }
 
 #confirmBox[hidden] { display: none; }
-#confirmBox p { margin: 0; text-align: center; line-height: 1.6; }
+#confirmBox p { margin: 0; text-align: center; font-size: 13px; line-height: 1.6; }
 #confirmBox .bar { display: flex; justify-content: center; gap: 10px; }
 
 #confirmBox button {
   font: inherit;
-  padding: 6px 18px;
+  font-size: 13px;
+  padding: 5px 16px;
   border-radius: 8px;
-  border: 1px solid var(--hairline);
-  background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: transparent;
   color: var(--ink);
   cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
 }
+
+#confirmBox button:hover { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.35); }
 
 #confirmBox button.primary {
   background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+  border-color: transparent;
+  color: #0B1512;
+  font-weight: 600;
 }
+
+#confirmBox button.primary:hover { background: color-mix(in srgb, var(--accent) 80%, #fff); }
 
 /* 完成庆祝动效：涟漪 + 划线 + 沉底（全应用唯一的庆祝时刻） */
 @keyframes celebrate-ripple {
