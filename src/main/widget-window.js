@@ -10,24 +10,20 @@ const { fitRectToDisplays, MARGIN } = require('../shared/geometry');
 
 const DEFAULT_SIZE = { width: 300, height: 420 };
 const MIN_SIZE = { width: 240, height: 200 };
-const VK_LWIN = 0x5b;
-const VK_D = 0x44;
 
 // Win+D 桌面态守卫：桌面态时「临时置顶」（Win11 显示桌面由 DWM 收起一切非置顶窗口的画面，
 // 置顶层豁免；此时满屏皆桌面无窗口可挡），恢复后回落普通层级。纯 Electron API 切换，
 // 不做 SetParent（父子化会破坏 per-monitor DPI 上下文与输入状态，已实测）。
 //
-// 双路径检测：
-// 1. 快路径：GetAsyncKeyState 轮询 Win+D 组合边沿（20ms，先于收起动画置顶）
-// 2. 慢路径：真实桌面态观测（200ms）——「屏幕上没有任何可见且未最小化的应用窗口」。
-//    覆盖任务栏「显示桌面」按钮/触摸手势等非键盘触发，并校正键盘路径的状态失步
-//    （如点任务栏图标恢复单个窗口后，键盘 toggle 计数与真实桌面态脱节）。
-//    判据 WS_EX_APPWINDOW 正判（有任务栏按钮的应用标志）：天然排除工具窗、
-//    skipTaskbar 悬浮物与置顶桌面歌词，避免它们让观测永远误判非桌面态。
+// 单一路径：高频观测真实桌面态（60ms，无宽限无方向推断）——「屏幕上没有任何
+// 可见且未最小化的应用窗口」即为桌面态。不做按键侦测/计数/延迟：按键方向推断在
+// 快速连按时会读到滞后的旧状态而反向，宽限延迟会放大错乱；直接跟随真实状态，
+// 无论键盘、任务栏按钮还是触摸手势触发，天然自洽。
+// 判据：非工具窗/非置顶悬浮/可见/未最小化，且有 (APPWINDOW 或 WS_CAPTION)
+//（Win11 WinUI 应用如记事本无 APPWINDOW 位）。
 function startWinDGuard(win) {
   const koffi = require('koffi');
   const lib = koffi.load('user32.dll');
-  const GetAsyncKeyState = lib.func('short GetAsyncKeyState(int vKey)');
   const EnumWindowsProc = koffi.proto('int EnumWindowsProc(intptr_t hwnd, intptr_t lParam)');
   const EnumWindows = lib.func('int EnumWindows(EnumWindowsProc *cb, intptr_t lParam)');
   const IsWindowVisible = lib.func('int IsWindowVisible(intptr_t h)');
@@ -41,12 +37,10 @@ function startWinDGuard(win) {
   const WS_EX_TOPMOST = 0x8;
   const hwnd = win.getNativeWindowHandle().readUInt32LE(0);
   let topmost = false;
-  let lastFlip = 0;
 
   const setTopmost = (on) => {
     if (on === topmost) return;
     topmost = on;
-    lastFlip = Date.now();
     try { win.setAlwaysOnTop(on, 'screen-saver'); } catch { /* 竞态：观测路径自愈 */ }
   };
 
@@ -60,7 +54,6 @@ function startWinDGuard(win) {
       const style = GetWindowLongW(h, -16) >>> 0;
       if (!(style & WS_VISIBLE)) return 1;
       if (!IsWindowVisible(h) || IsIconic(h)) return 1;
-      // 应用窗口 = 有任务栏按钮标志或标准标题框（Win11 WinUI 应用如记事本无 APPWINDOW）
       if (!((ex & WS_EX_APPWINDOW) || (style & WS_CAPTION))) return 1;
       ordinary++;
       return 1;
@@ -69,27 +62,10 @@ function startWinDGuard(win) {
     return ordinary === 0;
   }
 
-  let prevCombo = false;
-  let fast = null;
-  let slow = null;
-  const dead = () => win.isDestroyed();
-  fast = setInterval(() => {
-    if (dead()) { clearInterval(fast); clearInterval(slow); return; }
-    const combo = !!(GetAsyncKeyState(VK_LWIN) & 0x8000) && !!(GetAsyncKeyState(VK_D) & 0x8000);
-    if (combo && !prevCombo) {
-      // 不做 toggle 计数：以「当前真实桌面态的反面」为目标（Win+D 语义即切换）。
-      // 计数一旦因非键盘切换/无效按键错位，此后每次方向都是反的；实时取反则每次自愈。
-      try { setTopmost(!isDesktopState()); } catch { /* 枚举竞态：慢路径兜底 */ }
-    }
-    prevCombo = combo;
-  }, 20);
-
-  // 慢路径：观测真实桌面态。键盘切换后留 800ms 宽限（等收起/恢复动画完成）再开始校正。
-  slow = setInterval(() => {
-    if (dead()) { clearInterval(fast); clearInterval(slow); return; }
-    if (Date.now() - lastFlip < 800) return;
+  const timer = setInterval(() => {
+    if (win.isDestroyed()) { clearInterval(timer); return; }
     try { setTopmost(isDesktopState()); } catch { /* 枚举竞态：下轮再试 */ }
-  }, 200);
+  }, 60);
 }
 
 function bottomRight(workArea, size) {
