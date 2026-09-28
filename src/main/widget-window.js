@@ -27,6 +27,14 @@ function setupLayering(win) {
   const SetWindowLongPtrW = lib.func('intptr_t SetWindowLongPtrW(intptr_t h, int index, intptr_t newLong)');
   const CallWindowProcW = lib.func('intptr_t CallWindowProcW(intptr_t prev, intptr_t h, unsigned int msg, intptr_t wp, intptr_t lp)');
   const WndProcCb = koffi.proto('intptr_t WndProc(intptr_t hwnd, unsigned int msg, intptr_t wp, intptr_t lp)');
+  const EnumWindowsProc = koffi.proto('int EnumWindowsProc(intptr_t hwnd, intptr_t lParam)');
+  const EnumWindows = lib.func('int EnumWindows(EnumWindowsProc *cb, intptr_t lParam)');
+  const IsWindowVisible = lib.func('int IsWindowVisible(intptr_t h)');
+  const IsIconic = lib.func('int IsIconic(intptr_t h)');
+  const GetWindowLongW = lib.func('int GetWindowLongW(intptr_t h, int i)');
+  const GetWindowRect = lib.func('int GetWindowRect(intptr_t h, long *rc)');
+  const WindowFromPoint = lib.func('intptr_t WindowFromPoint(long x, long y)');
+  const GetAncestor = lib.func('intptr_t GetAncestor(intptr_t h, unsigned int gaFlags)');
 
   const HWND_BOTTOM = 1;
   const SWP_NOSIZE = 0x0001;
@@ -34,6 +42,11 @@ function setupLayering(win) {
   const SWP_NOACTIVATE = 0x0010;
   const GWLP_WNDPROC = -4;
   const HSHELL_WINDOWACTIVATED = 0x4;
+  const WS_VISIBLE = 0x10000000;
+  const WS_CAPTION = 0x00c00000;
+  const WS_EX_APPWINDOW = 0x40000;
+  const WS_EX_TOOLWINDOW = 0x80;
+  const WS_EX_TOPMOST = 0x8;
   const hwnd = win.getNativeWindowHandle().readUInt32LE(0);
 
   const sink = () => {
@@ -47,18 +60,53 @@ function setupLayering(win) {
     try { win.setAlwaysOnTop(on, 'screen-saver'); } catch { /* 竞态：下次事件自愈 */ }
   };
 
-  // Shell 钩子：显示桌面切换（键盘 Win+D 与任务栏按钮同源）都会激活"无窗口"（lp=0）。
-  // 但点击任务栏空白也发 lp=0（任务栏不算被激活窗口）——以前台窗口区分：
-  // 显示桌面时前台是桌面（Progman），点任务栏时前台是 Shell_TrayWnd。
+  // ---- 显示桌面确认（通用，不依赖坐标/分辨率/任务栏位置）----
+  // Shell 的桌面激活信号（lp=0 + 前台=Progman）在「点桌面图标」时也会出现，
+  // 单靠它无法区分。通用判据看效果：显示桌面的本质是「普通窗口从屏幕消失」——
+  // 取一个可见普通窗口，测试其中心点的命中归属：仍命中该窗口=只是点了桌面；
+  // 命中桌面系=窗口被收起（真显示桌面）。
+  const rectOf = (h) => {
+    const p = koffi.alloc('long', 4);
+    GetWindowRect(h, p);
+    return koffi.decode(p, 'long', 4);
+  };
+  const inTree = (target, rootHwnd) => {
+    let c = target, n = 0;
+    while (c && n++ < 12) {
+      if (c === rootHwnd) return true;
+      c = GetAncestor(c, 2 /*GA_ROOT*/); // 与 root 比较到顶层即可
+    }
+    return false;
+  };
+  const confirmShowDesktop = () => {
+    const fg = GetForegroundWindow();
+    if (fg === 0 || fg !== FindWindowW('Progman', null)) return false; // 前台不是桌面
+    let sample = 0;
+    const cb = koffi.register((h) => {
+      if (sample || h === hwnd) return 1;
+      const ex = GetWindowLongW(h, -20) >>> 0;
+      if (ex & (WS_EX_TOOLWINDOW | WS_EX_TOPMOST)) return 1;
+      const style = GetWindowLongW(h, -16) >>> 0;
+      if (!(style & WS_VISIBLE) || !IsWindowVisible(h) || IsIconic(h)) return 1;
+      if (!((ex & WS_EX_APPWINDOW) || (style & WS_CAPTION))) return 1;
+      const rc = rectOf(h);
+      if (rc[2] - rc[0] < 40 || rc[3] - rc[1] < 40) return 1;
+      sample = h;
+      return 0; // 找到即停
+    }, koffi.pointer(EnumWindowsProc));
+    try { EnumWindows(cb, 0); } finally { koffi.unregister(cb); }
+    if (!sample) return true; // 屏幕上没有可见普通窗口 = 已是显示桌面状态
+    const [l, t, r, b] = rectOf(sample);
+    const hit = WindowFromPoint((l + r) >> 1, (t + b) >> 1);
+    return !inTree(hit, sample); // 样本窗口位置被桌面接管 = 它被收起
+  };
+
+  // Shell 钩子：显示桌面切换（键盘 Win+D 与任务栏按钮同源）广播「无窗口激活」（lp=0）
   RegisterShellHookWindow(hwnd);
   const WM_SHELLHOOK = RegisterWindowMessageW('SHELLHOOK');
-  const isDesktopForeground = () => {
-    const fg = GetForegroundWindow();
-    return fg !== 0 && fg === FindWindowW('Progman', null);
-  };
   const shellProc = koffi.register((h, msg, wp, lp) => {
     if (msg === WM_SHELLHOOK && wp === HSHELL_WINDOWACTIVATED && !win.isDestroyed()) {
-      if (lp === 0 && !desktopMode && isDesktopForeground()) applyTopmost(true); // 显示桌面激活：置顶豁免
+      if (lp === 0 && !desktopMode && confirmShowDesktop()) applyTopmost(true); // 显示桌面激活：置顶豁免
       else if (lp !== 0 && desktopMode) applyTopmost(false); // 窗口接管：取消置顶
     }
     return CallWindowProcW(prevProc, h, msg, wp, lp);
