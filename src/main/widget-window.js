@@ -2,8 +2,9 @@
 // 桌面贴窗口：透明/无边框/可缩放、多屏位置恢复、矩形去抖持久化、全局快捷键。
 // Win+D（16ce6c5 验证通过版）：GetAsyncKeyState 轮询组合边沿 → toggle → setAlwaysOnTop
 // 切换置顶（Win11「显示桌面」由 DWM 收起一切非置顶窗口的画面，置顶层豁免）。
-// 任务栏「显示桌面」按钮：观测器补位——确认桌面态稳定切换沿时，若 toggle 已与实际一致
-//（键盘路径处理过）则跳过，不一致（任务栏触发/键盘错位）才对齐，两条路径不会双翻。
+// 任务栏「显示桌面」按钮：鼠标低级钩子检测按钮区域（主屏最右缘任务栏高度内）点击，
+// 与键盘 Win+D 完全同逻辑翻转 toggle——窗口状态观测不可行（按钮走 DWM 收起，
+// 窗口 iconic/cloak/可见性零变化，键盘 Win+D 才走真最小化，两路径系统行为不同）。
 // 启动时沉底（贴桌面层级）。拖动/缩放走应用层 IPC（见 main.js）。
 const { BrowserWindow, screen, globalShortcut } = require('electron');
 const fs = require('node:fs');
@@ -20,27 +21,20 @@ function setupLayering(win) {
   const lib = koffi.load('user32.dll');
   const SetWindowPos = lib.func('int SetWindowPos(intptr_t hWnd, intptr_t hWndInsertAfter, int x, int y, int cx, int cy, unsigned int uFlags)');
   const GetAsyncKeyState = lib.func('short GetAsyncKeyState(int vKey)');
-  const EnumWindowsProc = koffi.proto('int EnumWindowsProc(intptr_t hwnd, intptr_t lParam)');
-  const EnumWindows = lib.func('int EnumWindows(EnumWindowsProc *cb, intptr_t lParam)');
-  const IsWindowVisible = lib.func('int IsWindowVisible(intptr_t h)');
-  const IsIconic = lib.func('int IsIconic(intptr_t h)');
-  const GetWindowLongW = lib.func('int GetWindowLongW(intptr_t h, int i)');
-  const WinEventProcCb = koffi.proto('void WinEventProc(intptr_t hHook, unsigned long dwEvent, intptr_t hwnd, long idObject, long idChild, unsigned long dwEventThread, unsigned long dwmsEventTime)');
-  const SetWinEventHook = lib.func('intptr_t SetWinEventHook(unsigned long eventMin, unsigned long eventMax, intptr_t hmodWinEventProc, WinEventProc *lpfnWinEventProc, unsigned long idProcess, unsigned long idThread, unsigned long dwFlags)');
-  const UnhookWinEvent = lib.func('int UnhookWinEvent(intptr_t hHook)');
+  const GetCursorPos = lib.func('int GetCursorPos(long *lpPoint)');
+  const GetSystemMetrics = lib.func('int GetSystemMetrics(int nIndex)');
+  const SystemParametersInfoW = lib.func('int SystemParametersInfoW(unsigned int uiAction, unsigned int uiParam, void *pvParam, unsigned int winIni)');
+  const LLMouseProc = koffi.proto('intptr_t LowLevelMouseProc(int nCode, intptr_t wParam, intptr_t lParam)');
+  const SetWindowsHookExW = lib.func('intptr_t SetWindowsHookExW(int idHook, LLMouseProc *lpfn, intptr_t hMod, unsigned long dwThreadId)');
+  const UnhookWindowsHookEx = lib.func('int UnhookWindowsHookEx(intptr_t hhk)');
+  const CallNextHookEx = lib.func('intptr_t CallNextHookEx(intptr_t hhk, int nCode, intptr_t wParam, intptr_t lParam)');
 
   const HWND_BOTTOM = 1;
   const SWP_NOSIZE = 0x0001;
   const SWP_NOMOVE = 0x0002;
   const SWP_NOACTIVATE = 0x0010;
-  const WS_VISIBLE = 0x10000000;
-  const WS_CAPTION = 0x00c00000;
-  const WS_EX_APPWINDOW = 0x40000;
-  const WS_EX_TOOLWINDOW = 0x80;
-  const WS_EX_TOPMOST = 0x8;
-  // EVENT_SYSTEM_FOREGROUND / MINIMIZESTART / MINIMIZEEND / OBJECT_SHOW / OBJECT_HIDE
-  const EVENTS = [0x0003, 0x0016, 0x0017, 0x8002, 0x8003];
-  const WINEVENT_OUTOFCONTEXT = 0;
+  const WH_MOUSE_LL = 14;
+  const WM_LBUTTONDOWN = 0x201;
   const hwnd = win.getNativeWindowHandle().readUInt32LE(0);
 
   const sink = () => {
@@ -52,74 +46,44 @@ function setupLayering(win) {
     try { win.setAlwaysOnTop(on, 'screen-saver'); } catch { /* 竞态：下次自愈 */ }
   };
 
-  // ---- 快路径：键盘 Win+D 组合边沿 → toggle（首次验证通过的实现） ----
   let desktopMode = false;
+  const flip = () => {
+    desktopMode = !desktopMode;
+    applyTopmost(desktopMode);
+  };
+
+  // 键盘 Win+D：组合键边沿 → 翻转（首次验证通过的实现）
   let prevCombo = false;
   const timer = setInterval(() => {
     if (win.isDestroyed()) { clearInterval(timer); return; }
     const combo = !!(GetAsyncKeyState(VK_LWIN) & 0x8000) && !!(GetAsyncKeyState(VK_D) & 0x8000);
-    if (combo && !prevCombo) {
-      desktopMode = !desktopMode;
-      applyTopmost(desktopMode);
-    }
+    if (combo && !prevCombo) flip();
     prevCombo = combo;
   }, 20);
 
-  // ---- 慢路径：任务栏「显示桌面」按钮补位（逻辑同 Win+D 的翻转） ----
-  // 观测桌面态（无可见应用窗口）的稳定变化沿：确认时若 desktopMode 已与之一致
-  //（键盘路径已处理）则跳过，不一致才对齐——覆盖任务栏按钮等非键盘触发，
-  // 且键盘错位（无效按键/漏检）时自愈。方向性确认：进桌面稳 250ms、退出 40ms。
-  function isDesktopState() {
-    let ordinary = 0;
-    const cb = koffi.register((h) => {
-      if (h === hwnd) return 1;
-      const ex = GetWindowLongW(h, -20) >>> 0;
-      if (ex & WS_EX_TOOLWINDOW) return 1;
-      if (ex & WS_EX_TOPMOST) return 1;
-      const style = GetWindowLongW(h, -16) >>> 0;
-      if (!(style & WS_VISIBLE)) return 1;
-      if (!IsWindowVisible(h) || IsIconic(h)) return 1;
-      if (!((ex & WS_EX_APPWINDOW) || (style & WS_CAPTION))) return 1;
-      ordinary++;
-      return 1;
-    }, koffi.pointer(EnumWindowsProc));
-    try { EnumWindows(cb, 0); } finally { koffi.unregister(cb); }
-    return ordinary === 0;
-  }
+  // 任务栏「显示桌面」按钮：主屏最右缘（20 物理px）+ 任务栏高度内的左键点击 → 同键盘翻转。
+  // 本进程 DPI aware，GetSystemMetrics/SystemParametersInfoW 返回物理像素，与鼠标坐标同系。
+  const waBuf = koffi.alloc('long', 4);
+  SystemParametersInfoW(48 /*SPI_GETWORKAREA*/, 0, waBuf, 0);
+  const [, , , waBottom] = koffi.decode(waBuf, 'long', 4);
+  const screenW = GetSystemMetrics(0 /*SM_CXSCREEN*/);
+  const BTN_X = screenW - 20; // 按钮在任务栏最右缘的窄条
 
-  let stable = false;
-  let pending = null;
-  let recheckTimer = null;
-  const onChange = () => {
-    if (win.isDestroyed()) return;
-    const observed = isDesktopState();
-    const now = Date.now();
-    if (observed === stable) { pending = null; return; }
-    if (!pending || pending.value !== observed) pending = { value: observed, since: now };
-    const needMs = observed ? 250 : 40;
-    if (now - pending.since >= needMs) {
-      stable = observed;
-      pending = null;
-      if (desktopMode !== observed) { // 键盘路径未处理（任务栏触发或错位）：对齐
-        desktopMode = observed;
-        applyTopmost(desktopMode);
-      }
-    } else if (!recheckTimer) {
-      recheckTimer = setTimeout(() => { recheckTimer = null; onChange(); }, 120);
+  const mouseCb = koffi.register((nCode, wParam) => {
+    if (nCode === 0 && wParam === WM_LBUTTONDOWN && !win.isDestroyed()) {
+      const pt = koffi.alloc('long', 2);
+      GetCursorPos(pt);
+      const [mx, my] = koffi.decode(pt, 'long', 2);
+      if (mx >= BTN_X && my >= waBottom) flip();
     }
-  };
-
-  const hookCb = koffi.register((_hook, _event, eventHwnd, idObject) => {
-    if (eventHwnd === 0 || idObject !== 0 /*OBJID_WINDOW*/) return;
-    onChange();
-  }, koffi.pointer(WinEventProcCb));
-  const hooks = EVENTS.map((ev) => SetWinEventHook(ev, ev, 0, hookCb, 0, 0, WINEVENT_OUTOFCONTEXT));
+    return CallNextHookEx(0, nCode, wParam, 0);
+  }, koffi.pointer(LLMouseProc));
+  const mouseHook = SetWindowsHookExW(WH_MOUSE_LL, mouseCb, 0, 0);
 
   win.once('closed', () => {
     clearInterval(timer);
-    if (recheckTimer) clearTimeout(recheckTimer);
-    for (const h of hooks) if (h) UnhookWinEvent(h);
-    koffi.unregister(hookCb);
+    if (mouseHook) UnhookWindowsHookEx(mouseHook);
+    koffi.unregister(mouseCb);
   });
 
   return { sink, rise };
