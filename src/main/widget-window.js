@@ -1,10 +1,11 @@
 'use strict';
-// 桌面贴窗口：透明/无边框/不抢焦点（WS_EX_NOACTIVATE，Win+D「显示桌面」不波及）/可缩放、多屏位置恢复、矩形去抖持久化、全局快捷键。
+// 桌面贴窗口：透明/无边框/不抢焦点（WS_EX_NOACTIVATE）+ Win+D 桌面态动态迁移（见 desktop-mode.js）/可缩放、多屏位置恢复、矩形去抖持久化、全局快捷键。
 // 拖动/缩放走应用层 IPC（见 main.js）：桌面歌词类软件的通用形态。
 const { BrowserWindow, screen, globalShortcut } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { fitRectToDisplays, MARGIN } = require('../shared/geometry');
+const { startDesktopModeWatch } = require('./desktop-mode');
 
 const DEFAULT_SIZE = { width: 300, height: 420 };
 const MIN_SIZE = { width: 240, height: 200 };
@@ -56,10 +57,13 @@ function createWidgetWindow({ getSettings, onRectChanged }) {
   };
   win.on('moved', persist);
   win.on('resized', persist);
-  // Win+D 兜底：正常形态（NOACTIVATE+skipTaskbar）下「显示桌面」不波及；
-  // 个别环境仍把它最小化时立即弹回（无任务栏按钮 = 用户没有主动最小化的常规途径，误伤为零）
+  // Win+D 兜底：桌面态迁移由 desktop-mode 轮询驱动（约 20ms 粒度），
+  // 极端时序下若仍被最小化则立即弹回（无任务栏按钮 = 用户没有主动最小化的常规途径）
   win.on('minimize', () => win.restore());
-  win.once('ready-to-show', () => win.show());
+  win.once('ready-to-show', () => {
+    win.show();
+    startDesktopModeWatch(win); // Win+D 桌面态：附着桌面层保可见；恢复时脱附保交互
+  });
   return win;
 }
 
