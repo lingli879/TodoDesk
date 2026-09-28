@@ -23,11 +23,17 @@
       "build/tray.png",
       "package.json"
     ],
+    "asarUnpack": [
+      "node_modules/koffi/**"
+    ],
     "win": {
       "target": [
         "dir"
       ],
       "icon": "build/icon.ico"
     }
+  },
+  "dependencies": {
+    "koffi": "^3.3.2"
   }
 }
