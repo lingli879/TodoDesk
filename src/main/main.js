@@ -132,17 +132,6 @@ function createWidget() {
       state.settings.widgetSize = size;
       saveStateNow();
     },
-    // Explorer 重启等导致桌面贴原生窗口被销毁时的自愈：重建并重新附着。
-    // 唯一重建路径（closed 监听只置 null），避免双触发。
-    onWidgetLost: () => {
-      if (quitting) return;
-      if (widgetWin && !widgetWin.isDestroyed()) {
-        try { widgetWin.destroy(); } catch { /* 半死状态，忽略 */ }
-      }
-      widgetWin = null;
-      logger.write(dataDir, '桌面贴原生窗口丢失（Explorer 重启？），已自动重建');
-      createWidget();
-    },
   });
   widgetWin.on('closed', () => { widgetWin = null; });
   const ok = applyHotkey(state.settings.hotkey, toggleWidget);
