@@ -19,6 +19,8 @@ function setupLayering(win) {
   const koffi = require('koffi');
   const lib = koffi.load('user32.dll');
   const SetWindowPos = lib.func('int SetWindowPos(intptr_t hWnd, intptr_t hWndInsertAfter, int x, int y, int cx, int cy, unsigned int uFlags)');
+  const FindWindowW = lib.func('intptr_t FindWindowW(const wchar_t *lpClassName, const wchar_t *lpWindowName)');
+  const GetForegroundWindow = lib.func('intptr_t GetForegroundWindow()');
   const RegisterShellHookWindow = lib.func('int RegisterShellHookWindow(intptr_t hwnd)');
   const DeregisterShellHookWindow = lib.func('int DeregisterShellHookWindow(intptr_t hwnd)');
   const RegisterWindowMessageW = lib.func('unsigned int RegisterWindowMessageW(const wchar_t *lpString)');
@@ -45,12 +47,18 @@ function setupLayering(win) {
     try { win.setAlwaysOnTop(on, 'screen-saver'); } catch { /* 竞态：下次事件自愈 */ }
   };
 
-  // Shell 钩子：显示桌面切换（键盘 Win+D 与任务栏按钮同源）都会激活"无窗口"（lp=0）
+  // Shell 钩子：显示桌面切换（键盘 Win+D 与任务栏按钮同源）都会激活"无窗口"（lp=0）。
+  // 但点击任务栏空白也发 lp=0（任务栏不算被激活窗口）——以前台窗口区分：
+  // 显示桌面时前台是桌面（Progman），点任务栏时前台是 Shell_TrayWnd。
   RegisterShellHookWindow(hwnd);
   const WM_SHELLHOOK = RegisterWindowMessageW('SHELLHOOK');
+  const isDesktopForeground = () => {
+    const fg = GetForegroundWindow();
+    return fg !== 0 && fg === FindWindowW('Progman', null);
+  };
   const shellProc = koffi.register((h, msg, wp, lp) => {
     if (msg === WM_SHELLHOOK && wp === HSHELL_WINDOWACTIVATED && !win.isDestroyed()) {
-      if (lp === 0 && !desktopMode) applyTopmost(true);   // 显示桌面激活：置顶豁免
+      if (lp === 0 && !desktopMode && isDesktopForeground()) applyTopmost(true); // 显示桌面激活：置顶豁免
       else if (lp !== 0 && desktopMode) applyTopmost(false); // 窗口接管：取消置顶
     }
     return CallWindowProcW(prevProc, h, msg, wp, lp);
