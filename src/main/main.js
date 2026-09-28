@@ -93,6 +93,9 @@ async function bootstrap() {
 // 看门狗：主进程暴毙（explorer 强杀连带桌面贴死锁等）后自动拉起应用。
 // 以 ELECTRON_RUN_AS_NODE 运行于同一 exe，探活 ppid；优雅退出用标记文件区分。
 function startWatchdog() {
+  // 开发模式（npm start）不启动看门狗：Ctrl+C 退出主进程会被当成暴毙而自动重启，
+  // 干扰开发迭代。打包版保留崩溃自愈（正常用户无控制台，不存在 Ctrl+C 场景）。
+  if (!app.isPackaged) return;
   const mark = path.join(dataDir, '.graceful-exit');
   try { fs.unlinkSync(mark); } catch { /* 无残留 */ }
   const env = {
