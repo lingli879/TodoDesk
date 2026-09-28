@@ -76,7 +76,11 @@ function startWinDGuard(win) {
   fast = setInterval(() => {
     if (dead()) { clearInterval(fast); clearInterval(slow); return; }
     const combo = !!(GetAsyncKeyState(VK_LWIN) & 0x8000) && !!(GetAsyncKeyState(VK_D) & 0x8000);
-    if (combo && !prevCombo) setTopmost(!topmost);
+    if (combo && !prevCombo) {
+      // 不做 toggle 计数：以「当前真实桌面态的反面」为目标（Win+D 语义即切换）。
+      // 计数一旦因非键盘切换/无效按键错位，此后每次方向都是反的；实时取反则每次自愈。
+      try { setTopmost(!isDesktopState()); } catch { /* 枚举竞态：慢路径兜底 */ }
+    }
     prevCombo = combo;
   }, 20);
 
