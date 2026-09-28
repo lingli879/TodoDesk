@@ -169,6 +169,7 @@ function showWidget() {
       widgetWin.setBounds(fit);
     }
     widgetWin.show();
+    widgetWin.layering?.rise(); // 用户主动调出：浮到普通层顶部（失焦后自动沉底）
   }
 }
 
