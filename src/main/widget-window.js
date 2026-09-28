@@ -106,8 +106,15 @@ function setupLayering(win) {
   const WM_SHELLHOOK = RegisterWindowMessageW('SHELLHOOK');
   const shellProc = koffi.register((h, msg, wp, lp) => {
     if (msg === WM_SHELLHOOK && wp === HSHELL_WINDOWACTIVATED && !win.isDestroyed()) {
-      if (lp === 0 && !desktopMode && confirmShowDesktop()) applyTopmost(true); // 显示桌面激活：置顶豁免
-      else if (lp !== 0 && desktopMode) applyTopmost(false); // 窗口接管：取消置顶
+      if (lp === 0 && !desktopMode) {
+        // 按钮触发的时序：首个信号到达时前台可能还是任务栏、窗口最小化未完成——
+        // 延迟 400ms 等状态稳定再判定（期间 desktopMode 变化则作废）
+        setTimeout(() => {
+          if (!desktopMode && !win.isDestroyed() && confirmShowDesktop()) applyTopmost(true);
+        }, 400);
+      } else if (lp !== 0 && desktopMode) {
+        applyTopmost(false); // 窗口接管：取消置顶
+      }
     }
     return CallWindowProcW(prevProc, h, msg, wp, lp);
   }, koffi.pointer(WndProcCb));
