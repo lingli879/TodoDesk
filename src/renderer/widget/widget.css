@@ -3,26 +3,32 @@ html, body { margin: 0; height: 100%; background: transparent; }
 
 body {
   font-family: var(--font);
-  font-size: 13px;
-  color: var(--ink);
+  font-size: 14px;
   overflow: hidden;
   user-select: none;
+  /* 参考图风格：桌面贴固定白字，直接浮于壁纸 */
+  --ink: #FFFFFF;
+  --ink-soft: rgba(255, 255, 255, 0.62);
+  color: var(--ink);
+}
+
+/* 白底覆盖层（详情/确认气泡/右键菜单）恢复主题字色，避免白底白字 */
+#confirmBox { --ink: #22302B; --ink-soft: #5C6E68; }
+@media (prefers-color-scheme: dark) {
+  #confirmBox { --ink: #E8F1ED; --ink-soft: #9AB0A8; }
 }
 
 #panel {
-  --panel-alpha: 0.85;
+  --panel-alpha: 0.55; /* 与 DEFAULT_SETTINGS.widgetOpacity 同步；运行时 applyOpacity 会按用户设置覆盖 */
   height: 100%;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--surface) calc(var(--panel-alpha) * 100%), transparent);
-  border: 1px solid var(--hairline);
-  box-shadow: var(--shadow);
+  /* 参考图风格：极淡深色托底（非白灰雾），通透感直接来自壁纸；无边框无阴影 */
+  background: rgba(10, 14, 12, calc(var(--panel-alpha) * 45%));
   transition: background 0.15s ease;
 }
-
-#panel:hover { --panel-alpha: 0.95; }
 
 #dragHandle {
   -webkit-app-region: drag;
@@ -37,45 +43,21 @@ body {
 #dragHandle .app { font-weight: 600; letter-spacing: 0.05em; }
 #count { font-variant-numeric: tabular-nums; }
 
-#list { flex: 1; overflow-y: auto; padding: 0 8px 8px; }
+#list { flex: 1; overflow-y: auto; padding: 4px 8px 8px; }
 
-.group-head {
-  -webkit-app-region: drag;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 6px 4px;
-  font-size: 12px;
-  color: var(--ink-soft);
-}
-
-.group-head .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-
-ul.rows { list-style: none; margin: 0; padding: 0; }
+ul.rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0; }
 
 .todo {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 32px;
-  padding: 2px 6px;
+  min-height: 28px;
+  padding: 1px 6px;
   border-radius: var(--radius);
 }
 
-.todo:hover { background: var(--accent-tint); }
+/* 悬停只高亮标题文字，不加整行背景：与半透明主题协调 */
 
-.todo .grip {
-  flex: none;
-  width: 14px;
-  color: var(--ink-soft);
-  cursor: grab;
-  opacity: 0;
-  text-align: center;
-  font-size: 11px;
-  line-height: 1;
-}
-
-.todo:hover .grip { opacity: 0.85; }
 .todo.dragging { opacity: 0.45; }
 
 .todo input[type="checkbox"] {
@@ -118,44 +100,74 @@ ul.rows { list-style: none; margin: 0; padding: 0; }
   padding: 3px 0;
 }
 
-.todo .more {
+/* 行首项目符号：白色圆点，兼任拖拽排序手柄（任务行与编辑行共用，保持对齐） */
+.bullet {
   flex: none;
-  border: none;
-  background: none;
-  color: var(--ink-soft);
-  font-size: 14px;
-  cursor: pointer;
-  opacity: 0;
-  padding: 2px 4px;
-  border-radius: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  margin: 0 4px;
+  cursor: grab;
+  transition: transform 0.12s ease;
 }
 
-.todo:hover .more { opacity: 1; }
-.todo .more:hover { color: var(--ink); background: var(--surface); }
+.todo:hover .bullet { transform: scale(1.25); } /* 悬停微放大：提示可拖动 */
+
+/* 悬停操作图标：完成=绿 / 删除=红 / 详情=白；hover 只加轻底色，不再用白底（避免白块） */
+.todo .acts {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.todo:hover .acts { opacity: 1; }
+
+.todo .acts button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 4px 5px;
+  border-radius: 6px;
+  text-shadow: 0 0 1px currentColor; /* 同色微光晕：细字形在壁纸上更醒目 */
+}
+
+.todo .acts button:hover { background: rgba(255, 255, 255, 0.14); }
+.todo .acts .act-done { color: var(--accent); }
+.todo .acts .act-del { color: var(--danger); }
+.todo .acts .act-detail { color: rgba(255, 255, 255, 0.92); }
 
 .todo.done .title {
   text-decoration: line-through;
   color: var(--ink-soft);
 }
 
+/* 参考图风格：悬停高亮 = 暖橙色文字 + 加粗，无整行背景 */
+.todo:hover .title { font-weight: 600; color: #F5A623; }
+
 .todo .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
 .todo .dot.overdue { background: var(--danger); }
 
 /* 内联编辑行（新建/改名共用） */
-li.editing { display: flex; padding: 2px 6px; }
+li.editing { display: flex; align-items: center; gap: 8px; padding: 1px 6px; }
 
 li.editing input {
   flex: 1;
   min-width: 0;
   border: none;
   outline: none;
-  background: var(--surface);
+  background: transparent; /* 完全裸透明：无边框无描边，白字直接浮于壁纸 */
   color: var(--ink);
   font: inherit;
-  padding: 5px 8px;
+  padding: 4px 2px;
   border-radius: var(--radius);
-  box-shadow: inset 0 0 0 1px var(--accent);
 }
+
+li.editing input::placeholder { color: var(--ink-soft); }
 
 #empty {
   padding: 24px 12px;
@@ -192,51 +204,6 @@ li.editing input {
   background: var(--hairline);
   border-radius: 3px;
 }
-
-/* 详情面板覆盖层（等宽覆盖、内部滚动） */
-#detailLayer {
-  position: absolute;
-  inset: 0;
-  z-index: 35;
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--surface) 97%, transparent);
-  backdrop-filter: blur(8px);
-  overflow-y: auto;
-}
-
-#detailLayer[hidden] { display: none; }
-
-.detail-inner { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; }
-
-/* 右键菜单（贴内自绘） */
-#ctxMenu {
-  position: absolute;
-  z-index: 30;
-  min-width: 120px;
-  padding: 4px;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  border-radius: var(--radius);
-  background: var(--surface);
-  border: 1px solid var(--hairline);
-  box-shadow: var(--shadow);
-}
-
-#ctxMenu button {
-  border: none;
-  background: none;
-  text-align: left;
-  font: inherit;
-  color: var(--ink);
-  padding: 7px 12px;
-  border-radius: 7px;
-  cursor: pointer;
-}
-
-#ctxMenu button:hover:not(:disabled) { background: var(--accent-tint); }
-#ctxMenu button:disabled { color: var(--ink-soft); opacity: 0.5; cursor: default; }
-#ctxMenu button:last-child:not(:disabled) { color: var(--danger); }
 
 /* 确认气泡（贴内自绘，替代原生对话框） */
 #confirmBox {

@@ -1,5 +1,5 @@
 'use strict';
-// 桌面贴窗口：透明/无边框/置顶/可缩放、多屏位置恢复、矩形去抖持久化、全局快捷键。
+// 桌面贴窗口：透明/无边框/非置顶/可缩放、多屏位置恢复、矩形去抖持久化、全局快捷键。
 const { BrowserWindow, screen, globalShortcut } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -36,13 +36,11 @@ function createWidgetWindow({ getSettings, onRectChanged }) {
     frame: false,
     transparent: true,
     resizable: true,
-    alwaysOnTop: true,
+    alwaysOnTop: false, // 不置顶：普通窗口层级，不遮挡其他应用；透明度由 CSS --panel-alpha 控制
     skipTaskbar: true,
     show: false,
     webPreferences: fs.existsSync(preloadPath) ? { preload: preloadPath } : {},
   });
-  // Win11 原生亚克力模糊；不支持时静默退回 CSS 半透明。
-  try { win.setBackgroundMaterial('acrylic'); } catch { /* 平台不支持 */ }
   win.loadFile(path.join(__dirname, '../renderer/widget/widget.html'));
 
   let timer = null;

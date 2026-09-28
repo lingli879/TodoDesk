@@ -77,7 +77,7 @@ export async function renderSettingsPage(page) {
   const opacityRow = row('桌面贴透明度');
   const range = document.createElement('input');
   range.type = 'range';
-  range.min = '0.3';
+  range.min = '0.15';
   range.max = '1';
   range.step = '0.05';
   range.value = s.widgetOpacity;

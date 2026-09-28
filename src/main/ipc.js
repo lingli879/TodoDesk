@@ -162,6 +162,7 @@ function registerIpc(ipcMain, services) {
   on('widget:show', () => services.showWidget());
   on('widget:hide', () => services.hideWidget());
   on('widget:toggle', () => services.toggleWidget());
+  on('detail:open', (id) => services.openDetail(id));
   on('openDataFolder', () => services.openDataFolder());
 }
 

@@ -45,6 +45,9 @@ contextBridge.exposeInMainWorld('todoDesk', {
     hide: invoke('widget:hide'),
     toggle: invoke('widget:toggle'),
   },
+  detail: {
+    open: invoke('detail:open'),
+  },
   openDataFolder: invoke('openDataFolder'),
   onDataChange: (cb) => {
     ipcRenderer.on('data-changed', cb);
@@ -57,5 +60,10 @@ contextBridge.exposeInMainWorld('todoDesk', {
   onHotkeyFailed: (cb) => {
     ipcRenderer.on('hotkey-failed', cb);
     return () => ipcRenderer.removeListener('hotkey-failed', cb);
+  },
+  onDetailLoad: (cb) => {
+    const handler = (_e, id) => cb(id);
+    ipcRenderer.on('detail:load', handler);
+    return () => ipcRenderer.removeListener('detail:load', handler);
   },
 });

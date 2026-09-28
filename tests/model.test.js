@@ -72,6 +72,8 @@ test('validateCategoryInput：color 必须在色板内', () => {
 
 test('validateSettingsPatch：白名单/类型/范围/快捷键须带修饰键', () => {
   assert.equal(m.validateSettingsPatch({ widgetOpacity: 0.6 }).valid, true);
+  assert.equal(m.validateSettingsPatch({ widgetOpacity: 0.15 }).valid, true, '透明度下限 0.15 放行');
+  assert.equal(m.validateSettingsPatch({ widgetOpacity: 0.1 }).valid, false, '透明度低于 0.15 拒绝');
   assert.equal(m.validateSettingsPatch({ widgetOpacity: 5 }).valid, false, '透明度超范围拒绝');
   assert.equal(m.validateSettingsPatch({ widgetOpacity: 'x' }).valid, false, '透明度非数字拒绝');
   assert.equal(m.validateSettingsPatch({ hacker: 1 }).valid, false, '未知键拒绝');

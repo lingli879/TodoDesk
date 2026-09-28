@@ -8,6 +8,7 @@ const logger = require('./logger');
 const { registerIpc } = require('./ipc');
 const { createWidgetWindow, applyHotkey } = require('./widget-window');
 const { createMainWindow } = require('./main-window');
+const { createDetailWindow, getDetailWindow } = require('./detail-window');
 
 let dataDir = null;
 let state = null;
@@ -80,6 +81,7 @@ async function bootstrap() {
     toggleWidget,
     applyHotkey: (accel) => applyHotkey(accel, toggleWidget),
     setAutoLaunch: (v) => app.setLoginItemSettings({ openAtLogin: !!v }),
+    openDetail,
   });
 }
 
@@ -92,9 +94,15 @@ function saveStateNow() {
 }
 
 function broadcast(channel) {
-  for (const w of [mainWin, widgetWin]) {
+  for (const w of [mainWin, widgetWin, getDetailWindow()]) {
     if (w && !w.isDestroyed()) w.webContents.send(channel);
   }
+}
+
+// 详情独立窗口：不受桌面贴尺寸限制；贴桌面贴旁弹出
+function openDetail(id) {
+  const near = widgetWin && !widgetWin.isDestroyed() ? widgetWin.getBounds() : null;
+  createDetailWindow(id, near);
 }
 
 // ---- 窗口 ----
@@ -171,5 +179,7 @@ function exitApp() {
   quitting = true;
   if (widgetWin && !widgetWin.isDestroyed()) widgetWin.destroy();
   if (mainWin && !mainWin.isDestroyed()) mainWin.destroy();
+  const detail = getDetailWindow();
+  if (detail && !detail.isDestroyed()) detail.destroy();
   app.quit();
 }

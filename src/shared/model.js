@@ -8,7 +8,7 @@ const CATEGORY_PALETTE = [
 
 const DEFAULT_SETTINGS = {
   hotkey: 'Control+Alt+T',
-  widgetOpacity: 0.85,
+  widgetOpacity: 0.55,
   widgetPosition: null,
   widgetSize: null,
   showCompletedInWidget: true,
@@ -160,7 +160,7 @@ function validateSettingsPatch(patch) {
   const errors = [];
   const rules = {
     hotkey: (v) => typeof v === 'string' && HOTKEY_RE.test(v),
-    widgetOpacity: (v) => typeof v === 'number' && v >= 0.3 && v <= 1,
+    widgetOpacity: (v) => typeof v === 'number' && v >= 0.15 && v <= 1,
     widgetPosition: (v) => v === null || (isRect(v) && 'x' in v && 'y' in v),
     widgetSize: (v) => v === null || (isRect(v) && 'width' in v && 'height' in v),
     showCompletedInWidget: isBool,

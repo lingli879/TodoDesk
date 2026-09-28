@@ -1,6 +1,5 @@
-// 桌面贴：渲染 + 统一内联交互（点空白新建 / 点标题改名 / 点勾完成）+ 详情面板。
+// 桌面贴：渲染 + 统一内联交互（点空白新建 / 点标题改名 / 悬停图标完成删除详情）。
 import { fmtTime } from '../common/format.js';
-import { createTodoForm, diffTodoPatch } from '../common/todo-form.js';
 
 const panel = document.getElementById('panel');
 const listEl = document.getElementById('list');
@@ -8,9 +7,8 @@ const doneSec = document.getElementById('done');
 const doneList = document.getElementById('doneList');
 const doneCount = document.getElementById('doneCount');
 const countEl = document.getElementById('count');
-const ctxMenu = document.getElementById('ctxMenu');
 const confirmEl = document.getElementById('confirmBox');
-const detailLayer = document.getElementById('detailLayer');
+// 右键菜单与内嵌详情层已移除：详情为独立窗口，操作走行内悬停图标
 
 let view = { groups: [], completedToday: [], activeCount: 0 };
 let catsCache = [];          // 按 sortOrder 升序
@@ -44,22 +42,15 @@ function render() {
   }
   for (const g of view.groups) {
     if (!g.todos.length) continue;
+    // 不渲染分组标题：所有任务按「分类顺序→任务序号」平铺展示（.group 结构保留，供空白新建定位分类）
     const sec = document.createElement('section');
     sec.className = 'group';
     sec.dataset.key = g.key;
     sec.dataset.categoryId = g.category ? g.category.id : '';
-    const head = document.createElement('div');
-    head.className = 'group-head';
-    const dot = document.createElement('span');
-    dot.className = 'dot';
-    dot.style.background = g.category ? g.category.color : 'var(--ink-soft)';
-    const name = document.createElement('span');
-    name.textContent = g.category ? g.category.name : '未分类';
-    head.append(dot, name);
     const ul = document.createElement('ul');
     ul.className = 'rows';
     for (const t of g.todos) ul.append(renderTodo(t));
-    sec.append(head, ul);
+    sec.append(ul);
     listEl.append(sec);
   }
 
@@ -85,16 +76,12 @@ function renderTodo(t) {
   li.className = 'todo';
   li.dataset.id = t.id;
 
-  const grip = document.createElement('span');
-  grip.className = 'grip';
-  grip.textContent = '⠿';
-  grip.title = '拖动排序';
+  // 行首项目符号：白色圆点，兼任拖拽排序手柄
+  const bullet = document.createElement('span');
+  bullet.className = 'bullet';
+  bullet.title = '拖动排序';
 
-  const cb = document.createElement('input');
-  cb.type = 'checkbox';
-  cb.title = '完成';
-
-  li.append(grip, cb);
+  li.append(bullet);
 
   if (isOverdueActive(t)) {
     const d = document.createElement('span');
@@ -108,11 +95,20 @@ function renderTodo(t) {
   title.textContent = t.title;
   li.append(title);
 
-  const more = document.createElement('button');
-  more.className = 'more';
-  more.textContent = '⋯';
-  more.title = '详情';
-  li.append(more);
+  // 悬停操作图标：完成（绿）/ 删除（红）/ 详情（白）
+  const acts = document.createElement('span');
+  acts.className = 'acts';
+  const act = (cls, label, text) => {
+    const b = document.createElement('button');
+    b.className = cls;
+    b.title = label;
+    b.textContent = text;
+    acts.append(b);
+  };
+  act('act-done', '完成', '✔');
+  act('act-del', '删除', '✖');
+  act('act-detail', '详情', 'ⓘ');
+  li.append(acts);
   return li;
 }
 
@@ -163,23 +159,29 @@ export function beginEdit(todoId) {
   if (!li) return;
   const todo = view.groups.flatMap((g) => g.todos).find((t) => t.id === todoId);
   if (!todo) return;
-  openEditingRow(li.parentElement, 'edit', todo, todo.categoryId);
+  const ul = li.parentElement; // 需在 remove 前取，否则为 null
+  const ref = li.nextSibling; // 编辑行插在原行位置，取消/提交后列表不跳动
   li.remove();
+  openEditingRow(ul, 'edit', todo, todo.categoryId, ref);
 }
 
-function openEditingRow(ul, mode, todo, categoryId) {
+function openEditingRow(ul, mode, todo, categoryId, refLi = null) {
   cancelEditing();
   const li = document.createElement('li');
   li.className = 'editing';
+  // 与任务行同构的占位（白点），输入文字与任务标题对齐，减少错落
+  li.append(Object.assign(document.createElement('span'), { className: 'bullet' }));
   const input = document.createElement('input');
-  input.placeholder = mode === 'create' ? '要做的事…（回车连续添加）' : todo.title;
+  input.placeholder = mode === 'create' ? '要做的事…（回车连续添加）' : '';
+  if (mode === 'edit') input.value = todo.title; // 预填原内容，支持在其上继续修改
   li.append(input);
-  ul.append(li);
+  ul.insertBefore(li, refLi);
   editing = { mode, id: todo ? todo.id : null, categoryId, input, original: todo ? todo.title : '' };
   input.focus();
+  if (mode === 'edit') input.setSelectionRange(input.value.length, input.value.length); // 光标置于末尾
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); commitEditing(mode === 'create' ? 'chain' : 'close'); }
-    else if (e.key === 'Escape') { e.preventDefault(); cancelEditing(); }
+    else if (e.key === 'Escape') { e.preventDefault(); cancelEditing(); render(); }
   });
   input.addEventListener('blur', () => { if (editing && editing.input === input) commitEditing('close'); });
 }
@@ -198,6 +200,8 @@ export async function commitEditing(next) {
   } else if (ed.id) {
     if (value && value !== ed.original) {
       await window.todoDesk.todos.update({ id: ed.id, patch: { title: value } });
+    } else {
+      render(); // 空值/未改动 → 未保存，恢复被编辑行顶掉的原行
     }
   }
 }
@@ -255,42 +259,11 @@ export function confirmBox(message) {
   });
 }
 
-// ---------- 右键菜单 ----------
-export function openCtxMenu(todoId, x, y) {
-  const todo = [...view.groups.flatMap((g) => g.todos), ...view.completedToday]
-    .find((t) => t.id === todoId);
-  if (!todo) return;
-  const done = todo.endTime != null;
-  ctxMenu.replaceChildren();
-  const item = (label, fn, disabled = false) => {
-    const b = document.createElement('button');
-    b.textContent = label;
-    if (disabled) { b.disabled = true; b.title = 'Task 11 接入'; }
-    else b.addEventListener('click', () => { closeCtxMenu(); fn(); });
-    ctxMenu.append(b);
-  };
-  item(done ? '取消完成' : '完成', () => (done ? uncompleteTodo(todoId) : completeTodo(todoId)));
-  if (!done) item('修改标题', () => beginEdit(todoId));
-  item('打开详情', () => openDetail(todoId));
-  item('删除', async () => {
-    if (await confirmBox('删除这条待办？')) await window.todoDesk.todos.remove(todoId);
-  });
-  ctxMenu.hidden = false;
-  const r = panel.getBoundingClientRect();
-  ctxMenu.style.left = `${Math.min(Math.max(4, x - r.left), r.width - 130)}px`;
-  ctxMenu.style.top = `${Math.min(Math.max(4, y - r.top), r.height - ctxMenu.offsetHeight - 4)}px`;
-}
-
-function closeCtxMenu() {
-  ctxMenu.hidden = true;
-  ctxMenu.replaceChildren();
-}
-
-// ---------- 拖拽排序（组内，⠿ 手柄；点标题仍是编辑，两种手势互不干扰） ----------
+// ---------- 拖拽排序（组内，行首白点即手柄；点标题仍是编辑，两种手势互不干扰） ----------
 let drag = null; // { id, li, ul, startY, started }
 
 listEl.addEventListener('pointerdown', (e) => {
-  if (!e.target.classList.contains('grip')) return;
+  if (!e.target.classList.contains('bullet')) return;
   const li = e.target.closest('.todo');
   if (!li) return;
   drag = { id: li.dataset.id, li, ul: li.parentElement, startY: e.clientY, started: false };
@@ -333,65 +306,9 @@ listEl.addEventListener('pointercancel', () => {
   drag = null;
 });
 
-// ---------- 详情面板（右键菜单「打开详情」/ 条目「⋯」按钮；等宽覆盖、内部滚动） ----------
-let detailOpen = false;
-
-export async function openDetail(todoId) {
-  const todos = await window.todoDesk.todos.list();
-  const todo = todos.find((t) => t.id === todoId);
-  if (!todo) return;
-  const categories = await window.todoDesk.categories.list();
-  const form = createTodoForm({ todo, categories });
-
-  const closePanel = () => {
-    detailLayer.hidden = true;
-    detailLayer.replaceChildren();
-    detailOpen = false;
-  };
-
-  const save = document.createElement('button');
-  save.className = 'primary';
-  save.textContent = '保存';
-  const del = document.createElement('button');
-  del.className = 'danger';
-  del.textContent = '删除';
-  const close = document.createElement('button');
-  close.textContent = '关闭';
-  const bar = document.createElement('div');
-  bar.className = 'form-bar';
-  bar.append(del, close, save);
-
-  const inner = document.createElement('div');
-  inner.className = 'detail-inner';
-  inner.append(form.el, bar);
-  detailLayer.replaceChildren(inner);
-  detailLayer.hidden = false;
-  detailOpen = true;
-  form.el.querySelector('input').focus();
-
-  close.addEventListener('click', closePanel);
-  del.addEventListener('click', async () => {
-    if (await confirmBox('删除这条待办？')) {
-      await window.todoDesk.todos.remove(todoId);
-      closePanel();
-    }
-  });
-  save.addEventListener('click', async () => {
-    const values = form.getValues();
-    if (!values) return;
-    const patch = diffTodoPatch(todo, values);
-    // 取消完成且完成时间曾被人工改过 → 先确认（spec §3 防误丢人工记录）
-    if (todo.endTime != null && values.endTime == null && todo.endTimeManuallySet) {
-      if (!(await confirmBox('完成时间是手动调整过的，取消完成后将清除，确定？'))) return;
-    }
-    if (!Object.keys(patch).length) { closePanel(); return; }
-    try {
-      await window.todoDesk.todos.update({ id: todoId, patch });
-      closePanel();
-    } catch (e) {
-      form.showError(e.message);
-    }
-  });
+// ---------- 详情：独立窗口（不受桌面贴尺寸限制，主进程弹出） ----------
+export function openDetail(todoId) {
+  window.todoDesk.detail.open(todoId);
 }
 
 // ---------- 事件接线 ----------
@@ -399,15 +316,16 @@ listEl.addEventListener('click', (e) => {
   const todoLi = e.target.closest('.todo');
   if (todoLi) {
     const id = todoLi.dataset.id;
-    if (e.target.matches('input[type="checkbox"]')) {
-      const done = todoLi.classList.contains('done');
-      if (done) uncompleteTodo(id);
-      else completeTodo(id);
+    if (e.target.classList.contains('act-done')) { completeTodo(id); return; }
+    if (e.target.classList.contains('act-del')) {
+      (async () => {
+        if (await confirmBox('删除这条待办？')) await window.todoDesk.todos.remove(id);
+      })();
       return;
     }
+    if (e.target.classList.contains('act-detail')) { openDetail(id); return; }
     if (e.target.classList.contains('title')) { beginEdit(id); return; }
-    if (e.target.classList.contains('more')) { openDetail(id); return; }
-    return; // grip 由拖拽模块接线
+    return; // 白点由拖拽模块接线
   }
   // 空白处：新建。分组内→该组分类；分组外→第一个分类。
   const group = e.target.closest('.group');
@@ -420,21 +338,8 @@ doneList.addEventListener('click', (e) => {
   if (todoLi && e.target.matches('input[type="checkbox"]')) uncompleteTodo(todoLi.dataset.id);
 });
 
-panel.addEventListener('contextmenu', (e) => {
-  const todoLi = e.target.closest('.todo');
-  if (todoLi) {
-    e.preventDefault();
-    openCtxMenu(todoLi.dataset.id, e.clientX, e.clientY);
-  }
-});
-
-document.addEventListener('click', (e) => {
-  if (!ctxMenu.hidden && !ctxMenu.contains(e.target)) closeCtxMenu();
-});
-
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !ctxMenu.hidden) closeCtxMenu();
-});
+// 右键菜单已移除：仅阻止系统默认菜单，避免透明窗口上弹出浏览器菜单
+panel.addEventListener('contextmenu', (e) => e.preventDefault());
 
 window.todoDesk.onDataChange(() => { refresh(); });
 window.todoDesk.onSettingsChange(() => { applyOpacity(); refresh(); });

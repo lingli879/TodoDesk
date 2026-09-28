@@ -6,6 +6,7 @@ const { seedState } = require('../src/shared/model');
 function harness() {
   const handlers = {};
   const sent = [];
+  const opened = [];
   const state = seedState('2026-09-25T00:00:00Z');
   const services = {
     getState: () => state,
@@ -15,16 +16,24 @@ function harness() {
     showMainWindow: () => {},
     toggleWidget: () => {},
     applyHotkey: () => true,
+    openDetail: (id) => { opened.push(id); },
   };
   registerIpc({ handle: (ch, fn) => { handlers[ch] = fn; } }, services);
   const call = (ch, arg) => handlers[ch]({ sender: {} }, arg);
-  return { handlers, call, state, sent };
+  return { handlers, call, state, sent, opened };
 }
 
 test('todos:create 校验拒绝空标题', async () => {
   const h = harness();
   const r = await h.call('todos:create', { title: '' });
   assert.equal(r.ok, false);
+});
+
+test('detail:open 转发待办 id 给主进程服务', async () => {
+  const h = harness();
+  const r = await h.call('detail:open', 't-123');
+  assert.equal(r.ok, true);
+  assert.deepEqual(h.opened, ['t-123']);
 });
 
 test('todos:complete 设 endTime 且幂等', async () => {
