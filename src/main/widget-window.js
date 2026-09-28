@@ -13,22 +13,72 @@ const MIN_SIZE = { width: 240, height: 200 };
 const VK_LWIN = 0x5b;
 const VK_D = 0x44;
 
-// Win+D 桌面态守卫：组合键边沿切换「临时置顶」。纯 Electron API 切换层级，
+// Win+D 桌面态守卫：桌面态时「临时置顶」（Win11 显示桌面由 DWM 收起一切非置顶窗口的画面，
+// 置顶层豁免；此时满屏皆桌面无窗口可挡），恢复后回落普通层级。纯 Electron API 切换，
 // 不做 SetParent（父子化会破坏 per-monitor DPI 上下文与输入状态，已实测）。
+//
+// 双路径检测：
+// 1. 快路径：GetAsyncKeyState 轮询 Win+D 组合边沿（20ms，先于收起动画置顶）
+// 2. 慢路径：真实桌面态观测（200ms）——「屏幕上没有任何可见且未最小化的应用窗口」。
+//    覆盖任务栏「显示桌面」按钮/触摸手势等非键盘触发，并校正键盘路径的状态失步
+//    （如点任务栏图标恢复单个窗口后，键盘 toggle 计数与真实桌面态脱节）。
+//    判据 WS_EX_APPWINDOW 正判（有任务栏按钮的应用标志）：天然排除工具窗、
+//    skipTaskbar 悬浮物与置顶桌面歌词，避免它们让观测永远误判非桌面态。
 function startWinDGuard(win) {
   const koffi = require('koffi');
-  const GetAsyncKeyState = koffi.load('user32.dll').func('short GetAsyncKeyState(int vKey)');
-  let desktopMode = false;
+  const lib = koffi.load('user32.dll');
+  const GetAsyncKeyState = lib.func('short GetAsyncKeyState(int vKey)');
+  const EnumWindowsProc = koffi.proto('int EnumWindowsProc(intptr_t hwnd, intptr_t lParam)');
+  const EnumWindows = lib.func('int EnumWindows(EnumWindowsProc *cb, intptr_t lParam)');
+  const IsWindowVisible = lib.func('int IsWindowVisible(intptr_t h)');
+  const IsIconic = lib.func('int IsIconic(intptr_t h)');
+  const GetWindowLongW = lib.func('int GetWindowLongW(intptr_t h, int i)');
+
+  const WS_VISIBLE = 0x10000000;
+  const WS_EX_APPWINDOW = 0x40000;
+  const hwnd = win.getNativeWindowHandle().readUInt32LE(0);
+  let topmost = false;
+  let lastFlip = 0;
+
+  const setTopmost = (on) => {
+    if (on === topmost) return;
+    topmost = on;
+    lastFlip = Date.now();
+    try { win.setAlwaysOnTop(on, 'screen-saver'); } catch { /* 竞态：观测路径自愈 */ }
+  };
+
+  function isDesktopState() {
+    let ordinary = 0;
+    const cb = koffi.register((h) => {
+      if (h === hwnd) return 1;
+      const ex = GetWindowLongW(h, -20) >>> 0;
+      if (!(ex & WS_EX_APPWINDOW)) return 1;
+      if (!((GetWindowLongW(h, -16) >>> 0) & WS_VISIBLE)) return 1;
+      if (!IsWindowVisible(h) || IsIconic(h)) return 1;
+      ordinary++;
+      return 1;
+    }, koffi.pointer(EnumWindowsProc));
+    try { EnumWindows(cb, 0); } finally { koffi.unregister(cb); }
+    return ordinary === 0;
+  }
+
   let prevCombo = false;
-  const timer = setInterval(() => {
-    if (win.isDestroyed()) { clearInterval(timer); return; }
+  let fast = null;
+  let slow = null;
+  const dead = () => win.isDestroyed();
+  fast = setInterval(() => {
+    if (dead()) { clearInterval(fast); clearInterval(slow); return; }
     const combo = !!(GetAsyncKeyState(VK_LWIN) & 0x8000) && !!(GetAsyncKeyState(VK_D) & 0x8000);
-    if (combo && !prevCombo) {
-      desktopMode = !desktopMode;
-      try { win.setAlwaysOnTop(desktopMode, 'screen-saver'); } catch { /* 竞态：下次自愈 */ }
-    }
+    if (combo && !prevCombo) setTopmost(!topmost);
     prevCombo = combo;
   }, 20);
+
+  // 慢路径：观测真实桌面态。键盘切换后留 800ms 宽限（等收起/恢复动画完成）再开始校正。
+  slow = setInterval(() => {
+    if (dead()) { clearInterval(fast); clearInterval(slow); return; }
+    if (Date.now() - lastFlip < 800) return;
+    try { setTopmost(isDesktopState()); } catch { /* 枚举竞态：下轮再试 */ }
+  }, 200);
 }
 
 function bottomRight(workArea, size) {
