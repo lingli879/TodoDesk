@@ -265,7 +265,7 @@ let drag = null; // { id, li, ul, startY, started }
 listEl.addEventListener('pointerdown', (e) => {
   if (!e.target.classList.contains('bullet')) return;
   const li = e.target.closest('.todo');
-  if (!li) return;
+  if (!li || li.classList.contains('editing')) return; // 编辑行的白点是对齐占位，不是排序手柄
   drag = { id: li.dataset.id, li, ul: li.parentElement, startY: e.clientY, started: false };
   e.target.setPointerCapture(e.pointerId);
   e.preventDefault();

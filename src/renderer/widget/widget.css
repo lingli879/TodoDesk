@@ -166,7 +166,10 @@ li.editing input {
   font: inherit;
   padding: 4px 2px;
   border-radius: var(--radius);
+  user-select: text; /* 抵消 body 的 user-select:none 继承，否则鼠标划选无效 */
 }
+
+li.editing input::selection { background: rgba(255, 255, 255, 0.35); }
 
 li.editing input::placeholder { color: var(--ink-soft); }
 
