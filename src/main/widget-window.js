@@ -52,14 +52,10 @@ function setupLayering(win) {
   // win.on('focus', rise);
   // win.on('blur', () => { if (!toggle) sink(); });
 
-  // ---- Win+D toggle：置顶豁免 + 非豁免时原子沉底 ----
+  // ---- Win+D toggle：只切换置顶，无任何下沉/上浮（用户指示）----
   const apply = () => {
     try {
-      if (toggle) {
-        win.setAlwaysOnTop(true, 'screen-saver');
-      } else {
-        sink(); // 原子取消置顶并沉底（无「普通层顶部」中间帧）
-      }
+      win.setAlwaysOnTop(toggle, 'screen-saver'); // toggle=true 置顶豁免；false 仅取消置顶，不沉底
     } catch { /* 窗口竞态：下次事件自愈 */ }
   };
 
@@ -171,7 +167,7 @@ function createWidgetWindow({ getSettings, onRectChanged }) {
   const layering = setupLayering(win);
   win.once('ready-to-show', () => {
     win.show();
-    layering.sink(); // 启动即沉底（贴桌面层级）
+    // layering.sink(); // 启动即沉底（暂注释：验证纯置顶切换期间不启用任何下沉）
   });
   win.layering = layering; // main.js 显示/切换桌面贴时 rise() 用
   return win;
