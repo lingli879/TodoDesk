@@ -2,9 +2,9 @@
 // 桌面贴窗口：透明/无边框/可缩放、多屏位置恢复、矩形去抖持久化、全局快捷键。
 // Win+D（16ce6c5 验证通过版）：GetAsyncKeyState 轮询组合边沿 → toggle → setAlwaysOnTop
 // 切换置顶（Win11「显示桌面」由 DWM 收起一切非置顶窗口的画面，置顶层豁免）。
-// 任务栏「显示桌面」按钮：鼠标低级钩子检测按钮区域（主屏最右缘任务栏高度内）点击，
-// 与键盘 Win+D 完全同逻辑翻转 toggle——窗口状态观测不可行（按钮走 DWM 收起，
-// 窗口 iconic/cloak/可见性零变化，键盘 Win+D 才走真最小化，两路径系统行为不同）。
+// 任务栏「显示桌面」按钮：同一轮询里检测「左键按下边沿 + 光标在按钮区域」（主屏最右缘
+// 任务栏高度内）→ 与键盘完全相同的翻转。不用鼠标钩子（高频回调进 JS 易崩且断钩子链）；
+// 不用窗口状态观测（按钮走 DWM 收起，窗口状态零变化，只有键盘 Win+D 才真最小化）。
 // 启动时沉底（贴桌面层级）。拖动/缩放走应用层 IPC（见 main.js）。
 const { BrowserWindow, screen, globalShortcut } = require('electron');
 const fs = require('node:fs');
@@ -15,6 +15,7 @@ const DEFAULT_SIZE = { width: 300, height: 420 };
 const MIN_SIZE = { width: 240, height: 200 };
 const VK_LWIN = 0x5b;
 const VK_D = 0x44;
+const VK_LBUTTON = 0x01;
 
 function setupLayering(win) {
   const koffi = require('koffi');
@@ -24,17 +25,11 @@ function setupLayering(win) {
   const GetCursorPos = lib.func('int GetCursorPos(long *lpPoint)');
   const GetSystemMetrics = lib.func('int GetSystemMetrics(int nIndex)');
   const SystemParametersInfoW = lib.func('int SystemParametersInfoW(unsigned int uiAction, unsigned int uiParam, void *pvParam, unsigned int winIni)');
-  const LLMouseProc = koffi.proto('intptr_t LowLevelMouseProc(int nCode, intptr_t wParam, intptr_t lParam)');
-  const SetWindowsHookExW = lib.func('intptr_t SetWindowsHookExW(int idHook, LLMouseProc *lpfn, intptr_t hMod, unsigned long dwThreadId)');
-  const UnhookWindowsHookEx = lib.func('int UnhookWindowsHookEx(intptr_t hhk)');
-  const CallNextHookEx = lib.func('intptr_t CallNextHookEx(intptr_t hhk, int nCode, intptr_t wParam, intptr_t lParam)');
 
   const HWND_BOTTOM = 1;
   const SWP_NOSIZE = 0x0001;
   const SWP_NOMOVE = 0x0002;
   const SWP_NOACTIVATE = 0x0010;
-  const WH_MOUSE_LL = 14;
-  const WM_LBUTTONDOWN = 0x201;
   const hwnd = win.getNativeWindowHandle().readUInt32LE(0);
 
   const sink = () => {
@@ -52,39 +47,33 @@ function setupLayering(win) {
     applyTopmost(desktopMode);
   };
 
-  // 键盘 Win+D：组合键边沿 → 翻转（首次验证通过的实现）
-  let prevCombo = false;
-  const timer = setInterval(() => {
-    if (win.isDestroyed()) { clearInterval(timer); return; }
-    const combo = !!(GetAsyncKeyState(VK_LWIN) & 0x8000) && !!(GetAsyncKeyState(VK_D) & 0x8000);
-    if (combo && !prevCombo) flip();
-    prevCombo = combo;
-  }, 20);
-
-  // 任务栏「显示桌面」按钮：主屏最右缘（20 物理px）+ 任务栏高度内的左键点击 → 同键盘翻转。
-  // 本进程 DPI aware，GetSystemMetrics/SystemParametersInfoW 返回物理像素，与鼠标坐标同系。
+  // 按钮/键盘统一在 20ms 轮询里检测（本进程 DPI aware，屏幕 API 返回物理像素与鼠标坐标同系）
   const waBuf = koffi.alloc('long', 4);
   SystemParametersInfoW(48 /*SPI_GETWORKAREA*/, 0, waBuf, 0);
   const [, , , waBottom] = koffi.decode(waBuf, 'long', 4);
   const screenW = GetSystemMetrics(0 /*SM_CXSCREEN*/);
-  const BTN_X = screenW - 20; // 按钮在任务栏最右缘的窄条
+  const BTN_X = screenW - 20; // 「显示桌面」按钮在任务栏最右缘的窄条
 
-  const mouseCb = koffi.register((nCode, wParam) => {
-    if (nCode === 0 && wParam === WM_LBUTTONDOWN && !win.isDestroyed()) {
+  let prevCombo = false;
+  let prevBtn = false;
+  const timer = setInterval(() => {
+    if (win.isDestroyed()) { clearInterval(timer); return; }
+    // 键盘 Win+D 组合边沿
+    const combo = !!(GetAsyncKeyState(VK_LWIN) & 0x8000) && !!(GetAsyncKeyState(VK_D) & 0x8000);
+    if (combo && !prevCombo) flip();
+    prevCombo = combo;
+    // 任务栏「显示桌面」按钮：左键按下边沿 + 光标在按钮区域
+    const btnDown = !!(GetAsyncKeyState(VK_LBUTTON) & 0x8000);
+    if (btnDown && !prevBtn) {
       const pt = koffi.alloc('long', 2);
       GetCursorPos(pt);
       const [mx, my] = koffi.decode(pt, 'long', 2);
       if (mx >= BTN_X && my >= waBottom) flip();
     }
-    return CallNextHookEx(0, nCode, wParam, 0);
-  }, koffi.pointer(LLMouseProc));
-  const mouseHook = SetWindowsHookExW(WH_MOUSE_LL, mouseCb, 0, 0);
+    prevBtn = btnDown;
+  }, 20);
 
-  win.once('closed', () => {
-    clearInterval(timer);
-    if (mouseHook) UnhookWindowsHookEx(mouseHook);
-    koffi.unregister(mouseCb);
-  });
+  win.once('closed', () => clearInterval(timer));
 
   return { sink, rise };
 }
