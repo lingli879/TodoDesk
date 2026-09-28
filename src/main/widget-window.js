@@ -1,9 +1,14 @@
 'use strict';
 // 桌面贴窗口：透明/无边框/可缩放、多屏位置恢复、矩形去抖持久化、全局快捷键。
-// 【当前步骤：仅 Win+D】键盘组合边沿（GetAsyncKeyState 20ms 轮询）→ toggle 置顶。
-// 原理：Win11「显示桌面」由 DWM 收起一切非置顶窗口的画面，置顶层豁免——
-// 按下瞬间置顶，桌面贴随桌面保持可见；再按取消置顶。不判断窗口状态（用户指示：
-// 不管窗口收完没收完），按键即翻转。任务栏按钮/桌面空白处待后续步骤。
+// 显示桌面切换的两种触发（同一 toggle、同一动作，均无坐标依赖）：
+//   1. 键盘 Win+D：GetAsyncKeyState 轮询组合边沿
+//   2. 任务栏「显示桌面」按钮：WinEvent 焦点序列指纹——「任务栏获焦后 500ms 内
+//      桌面（Progman）获焦」。实测（Win11 26200）：点按钮 = 任务栏焦点 → 约 135ms
+//      后桌面焦点；点时钟 = 任务栏焦点 → 弹出层焦点（桌面不获焦）；点桌面空白 =
+//      桌面直接获焦（无前置任务栏焦点）。事件序列与分辨率/缩放无关。
+// toggle 语义：进桌面 → 置顶豁免 DWM 收起（桌面贴随桌面可见）；
+//              恢复 → 单次原子沉底（HWND_BOTTOM 隐含摘除 topmost 位，无中间帧）。
+// 焦点驱动层级：桌面贴获焦 → 浮到普通层顶部；失焦 → 沉回底部（置顶豁免期间不沉）。
 // 启动时沉底（贴桌面层级）。拖动/缩放走应用层 IPC（见 main.js）。
 const { BrowserWindow, screen, globalShortcut } = require('electron');
 const fs = require('node:fs');
@@ -20,11 +25,17 @@ function setupLayering(win) {
   const lib = koffi.load('user32.dll');
   const SetWindowPos = lib.func('int SetWindowPos(intptr_t hWnd, intptr_t hWndInsertAfter, int x, int y, int cx, int cy, unsigned int uFlags)');
   const GetAsyncKeyState = lib.func('short GetAsyncKeyState(int vKey)');
+  const FindWindowW = lib.func('intptr_t FindWindowW(const wchar_t *lpClassName, const wchar_t *lpWindowName)');
+  const WinEventProcCb = koffi.proto('void WinEventProc(intptr_t hHook, unsigned long dwEvent, intptr_t hwnd, long idObject, long idChild, unsigned long dwThread, unsigned long dwTime)');
+  const SetWinEventHook = lib.func('intptr_t SetWinEventHook(unsigned long eventMin, unsigned long eventMax, intptr_t hmod, WinEventProc *proc, unsigned long pid, unsigned long tid, unsigned long flags)');
+  const UnhookWinEvent = lib.func('int UnhookWinEvent(intptr_t hHook)');
 
   const HWND_BOTTOM = 1;
   const SWP_NOSIZE = 0x0001;
   const SWP_NOMOVE = 0x0002;
   const SWP_NOACTIVATE = 0x0010;
+  const EVENT_OBJECT_FOCUS = 0x8005;
+  const WINEVENT_OUTOFCONTEXT = 0;
   const hwnd = win.getNativeWindowHandle().readUInt32LE(0);
 
   const sink = () => {
@@ -32,25 +43,68 @@ function setupLayering(win) {
   };
   const rise = () => { try { win.moveTop(); } catch { /* 窗口竞态 */ } };
 
-  // ---- 仅 Win+D：组合键边沿 → toggle（用户验证过的实现） ----
-  // 进桌面：置顶豁免收起。恢复：单次原子沉底（HWND_BOTTOM 隐含摘除 topmost 位，
-  // 无「普通层顶部」中间帧——只取消置顶不沉底会悬在应用前面）
   let desktopMode = false;
+  const toggle = () => {
+    desktopMode = !desktopMode;
+    try {
+      if (desktopMode) win.setAlwaysOnTop(true, 'screen-saver');
+      else sink();
+    } catch { /* 窗口竞态 */ }
+  };
+
+  // ---- 焦点驱动层级（用户指定）：获焦 → 浮到普通层顶部；失焦 → 沉回底部 ----
+  // Win+D 置顶豁免期间（desktopMode）失焦不沉，保住显示桌面态不被破坏。
+  win.on('focus', rise);
+  win.on('blur', () => { if (!desktopMode) sink(); });
+
+  // ---- 键盘 Win+D：组合键边沿 ----
   let prevCombo = false;
   const timer = setInterval(() => {
     if (win.isDestroyed()) { clearInterval(timer); return; }
     const combo = !!(GetAsyncKeyState(VK_LWIN) & 0x8000) && !!(GetAsyncKeyState(VK_D) & 0x8000);
-    if (combo && !prevCombo) {
-      desktopMode = !desktopMode;
-      try {
-        if (desktopMode) win.setAlwaysOnTop(true, 'screen-saver');
-        else sink();
-      } catch { /* 窗口竞态 */ }
-    }
+    if (combo && !prevCombo) toggle();
     prevCombo = combo;
   }, 20);
 
-  win.once('closed', () => clearInterval(timer));
+  // ---- 任务栏「显示桌面」按钮：焦点序列指纹（任务栏获焦 → 500ms 内目标窗口获焦）----
+  // 进桌面：任务栏 → Progman（桌面接管）；恢复：任务栏 → 应用窗口（排除任务栏
+  // 自身 XAML 子元素与弹出层 CoreWindow）。点桌面本身无前置任务栏焦点，不误触。
+  const trayFocusAt = { t: 0 };
+  const GetWindowLongW = lib.func('int GetWindowLongW(intptr_t h, int i)');
+  const isAppWindow = (h) => {
+    const ex = GetWindowLongW(h, -20) >>> 0;
+    const style = GetWindowLongW(h, -16) >>> 0;
+    return !!(ex & 0x40000 /*WS_EX_APPWINDOW*/) || !!(style & 0x00c00000 /*WS_CAPTION*/);
+  };
+  const focusCb = koffi.register((hk, ev, h) => {
+    if (win.isDestroyed()) return;
+    const tray = FindWindowW('Shell_TrayWnd', null);
+    const progman = FindWindowW('Progman', null);
+    if (h === tray) {
+      trayFocusAt.t = Date.now();
+      return;
+    }
+    if (h === progman) {
+      // 任务栏点击后桌面接管 = 进入显示桌面
+      if (trayFocusAt.t && Date.now() - trayFocusAt.t < 500 && !desktopMode) {
+        trayFocusAt.t = 0;
+        toggle();
+      }
+      return;
+    }
+    // 其他窗口：应用窗口（有任务栏按钮或标题框）在任务栏点击后接管 = 恢复
+    if (trayFocusAt.t && Date.now() - trayFocusAt.t < 500 && desktopMode && isAppWindow(h)) {
+      trayFocusAt.t = 0;
+      toggle();
+    }
+  }, koffi.pointer(WinEventProcCb));
+  const focusHook = SetWinEventHook(EVENT_OBJECT_FOCUS, EVENT_OBJECT_FOCUS, 0, focusCb, 0, 0, WINEVENT_OUTOFCONTEXT);
+
+  win.once('closed', () => {
+    clearInterval(timer);
+    if (focusHook) UnhookWinEvent(focusHook);
+    koffi.unregister(focusCb);
+  });
 
   return { sink, rise };
 }
