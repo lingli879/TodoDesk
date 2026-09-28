@@ -1,5 +1,7 @@
 'use strict';
-// 桌面贴窗口：透明/无边框/置顶+不抢焦点（桌面歌词式：Win+D「显示桌面」不收起置顶层）/可缩放、多屏位置恢复、矩形去抖持久化、全局快捷键。
+// 桌面贴窗口：透明/无边框/普通层级（不置顶不遮挡应用）/可缩放、多屏位置恢复、矩形去抖持久化、全局快捷键。
+// Win+D：按下期间临时置顶（Win11「显示桌面」由 DWM 收起一切非置顶窗口的画面，置顶层豁免——
+// 此时满屏皆桌面无窗口可挡），再按时回落普通层级。检测为 GetAsyncKeyState 轮询（无钩子无权限）。
 // 拖动/缩放走应用层 IPC（见 main.js）。
 const { BrowserWindow, screen, globalShortcut } = require('electron');
 const fs = require('node:fs');
@@ -8,6 +10,26 @@ const { fitRectToDisplays, MARGIN } = require('../shared/geometry');
 
 const DEFAULT_SIZE = { width: 300, height: 420 };
 const MIN_SIZE = { width: 240, height: 200 };
+const VK_LWIN = 0x5b;
+const VK_D = 0x44;
+
+// Win+D 桌面态守卫：组合键边沿切换「临时置顶」。纯 Electron API 切换层级，
+// 不做 SetParent（父子化会破坏 per-monitor DPI 上下文与输入状态，已实测）。
+function startWinDGuard(win) {
+  const koffi = require('koffi');
+  const GetAsyncKeyState = koffi.load('user32.dll').func('short GetAsyncKeyState(int vKey)');
+  let desktopMode = false;
+  let prevCombo = false;
+  const timer = setInterval(() => {
+    if (win.isDestroyed()) { clearInterval(timer); return; }
+    const combo = !!(GetAsyncKeyState(VK_LWIN) & 0x8000) && !!(GetAsyncKeyState(VK_D) & 0x8000);
+    if (combo && !prevCombo) {
+      desktopMode = !desktopMode;
+      try { win.setAlwaysOnTop(desktopMode, 'screen-saver'); } catch { /* 竞态：下次自愈 */ }
+    }
+    prevCombo = combo;
+  }, 20);
+}
 
 function bottomRight(workArea, size) {
   return {
@@ -37,10 +59,8 @@ function createWidgetWindow({ getSettings, onRectChanged }) {
     frame: false,
     transparent: true,
     resizable: true,
-    alwaysOnTop: true, // 置顶：Win11「显示桌面」会收起普通窗口层的画面，置顶层豁免（桌面歌词同机制）；
-                       // 代价是浮于普通窗口之上。透明度由 CSS --panel-alpha 控制
+    alwaysOnTop: false, // 普通窗口层级，不遮挡其他应用；透明度由 CSS --panel-alpha 控制
     skipTaskbar: true,
-    focusable: false, // WS_EX_NOACTIVATE：不抢焦点；配合置顶构成桌面歌词形态
     show: false,
     webPreferences: fs.existsSync(preloadPath) ? { preload: preloadPath } : {},
   });
@@ -57,10 +77,13 @@ function createWidgetWindow({ getSettings, onRectChanged }) {
   };
   win.on('moved', persist);
   win.on('resized', persist);
-  // Win+D 兜底：个别环境下若仍被最小化则立即弹回
+  // Win+D 兜底：临时置顶由 startWinDGuard 驱动；极端时序下若仍被最小化则立即弹回
   // （无任务栏按钮 = 用户没有主动最小化的常规途径，误伤为零）
   win.on('minimize', () => win.restore());
-  win.once('ready-to-show', () => win.show());
+  win.once('ready-to-show', () => {
+    win.show();
+    startWinDGuard(win);
+  });
   return win;
 }
 

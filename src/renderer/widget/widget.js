@@ -177,8 +177,6 @@ function openEditingRow(ul, mode, todo, categoryId, refLi = null) {
   li.append(input);
   ul.insertBefore(li, refLi);
   editing = { mode, id: todo ? todo.id : null, categoryId, input, original: todo ? todo.title : '' };
-  // NOACTIVATE 形态下 DOM focus 拿不到系统键盘焦点：先请主进程激活窗口，激活后再补聚焦
-  window.todoDesk.widget.setEditing(true);
   input.focus();
   if (mode === 'edit') input.setSelectionRange(input.value.length, input.value.length); // 光标置于末尾
   input.addEventListener('keydown', (e) => {
@@ -192,7 +190,6 @@ export async function commitEditing(next) {
   if (!editing) return;
   const ed = editing;
   editing = null;
-  window.todoDesk.widget.setEditing(false); // 回到 NOACTIVATE 形态（Win+D 免疫）
   const value = ed.input.value.trim();
   ed.input.closest('li.editing')?.remove();
   if (ed.mode === 'create') {
@@ -213,7 +210,6 @@ export function cancelEditing() {
   if (!editing) return;
   editing.input.closest('li.editing')?.remove();
   editing = null;
-  window.todoDesk.widget.setEditing(false);
 }
 
 // ---------- 完成 / 取消完成 ----------
@@ -365,14 +361,6 @@ function windowDrag(el) {
   });
 }
 windowDrag(document.getElementById('dragHandle'));
-
-// 编辑态上报：input 聚焦时主进程临时恢复窗口可聚焦（NOACTIVATE 形态收不到键盘），失焦恢复
-document.addEventListener('focusin', (e) => {
-  if (e.target.matches('input, textarea')) window.todoDesk.widget.setEditing(true);
-});
-document.addEventListener('focusout', () => window.todoDesk.widget.setEditing(false));
-// 窗口被主进程激活（编辑开始时 setEditing(true) 的 focus()）后补聚焦 input，键盘才真正可达
-window.addEventListener('focus', () => { if (editing) editing.input.focus(); });
 const doneSummary = document.querySelector('#done summary');
 if (doneSummary) windowDrag(doneSummary);
 

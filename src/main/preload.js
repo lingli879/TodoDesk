@@ -51,7 +51,6 @@ contextBridge.exposeInMainWorld('todoDesk', {
     beginResize: (p) => ipcRenderer.send('widget:begin-resize', p),
     resizeMove: (p) => ipcRenderer.send('widget:resize-move', p),
     endResize: () => ipcRenderer.send('widget:end-resize'),
-    setEditing: (v) => ipcRenderer.send('widget:set-editing', v),
   },
   detail: {
     open: invoke('detail:open'),

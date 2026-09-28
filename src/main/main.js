@@ -86,7 +86,6 @@ async function bootstrap() {
     openDetail,
     beginWidgetDrag, dragWidget, endWidgetDrag,
     beginWidgetResize, resizeWidgetTo, endWidgetResize,
-    setWidgetEditing,
   });
   startWatchdog();
 }
@@ -213,13 +212,6 @@ function resizeWidgetTo({ screenX, screenY }) {
 }
 function endWidgetResize() { winResize = null; }
 
-// 编辑态切换：input 聚焦时临时恢复窗口可聚焦并取前台（键盘输入需要），
-// 失焦后回到 NOACTIVATE 形态（Win+D「显示桌面」免疫依赖它）
-function setWidgetEditing(v) {
-  if (!widgetAlive()) return;
-  widgetWin.setFocusable(!!v);
-  if (v) widgetWin.focus();
-}
 
 // ---- 托盘 ----
 function createTray() {

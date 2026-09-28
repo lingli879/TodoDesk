@@ -175,7 +175,6 @@ function registerIpc(ipcMain, services) {
   recv('widget:begin-resize', (p) => services.beginWidgetResize(p));
   recv('widget:resize-move', (p) => services.resizeWidgetTo(p));
   recv('widget:end-resize', () => services.endWidgetResize());
-  recv('widget:set-editing', (v) => services.setWidgetEditing?.(v));
 }
 
 module.exports = { registerIpc };
