@@ -313,6 +313,9 @@ export function openDetail(todoId) {
 
 // ---------- 事件接线 ----------
 listEl.addEventListener('click', (e) => {
+  // 编辑行（class 是 editing 而非 todo）内部的点击——包括划选结束产生的 click——
+  // 不属于"空白新建"也不属于任何行操作，直接放过，否则会拆掉编辑行误开新建
+  if (e.target.closest('li.editing')) return;
   const todoLi = e.target.closest('.todo');
   if (todoLi) {
     const id = todoLi.dataset.id;
