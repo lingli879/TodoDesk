@@ -81,37 +81,26 @@ function setupLayering(win) {
   RegisterShellHookWindow(hwnd);
   const WM_SHELLHOOK = RegisterWindowMessageW('SHELLHOOK');
 
-  // ========== 三场景分立的处理逻辑（共用信号源，各自独立） ==========
+  // ========== 三场景分立的处理逻辑（共用信号源，各自独立，无延迟无重试） ==========
   //
   // 【场景 1：进入显示桌面（Win+D / 按钮）】lp=0 且未置顶 →
-  //   渐进验证「窗口全部消失」→ 置顶。键盘时序快首查即中（无闪）；
-  //   按钮时序慢，每 150ms 复查，在窗口收起完成的瞬间命中（无空等）。
-  const attemptEnter = (n) => {
-    if (desktopMode || win.isDestroyed() || n > 6) return;
-    if (!hasVisibleAppWindow()) { applyTopmost(true); return; }
-    setTimeout(() => attemptEnter(n + 1), 150);
-  };
-
+  //   即时判定「窗口全部消失」→ 置顶。
+  //
   // 【场景 2：退出显示桌面（Win+D / 按钮 · 恢复）】两个信号形态——
   //   a) lp=窗口句柄（窗口接管前台）且已置顶 → 立即取消
-  //   b) lp=0 且已置顶（按钮恢复时前台可能无窗口接管）→ 渐进验证「窗口回来了」→ 取消
-  const attemptLeave = (n) => {
-    if (!desktopMode || win.isDestroyed() || n > 6) return;
-    if (hasVisibleAppWindow()) { applyTopmost(false); return; }
-    setTimeout(() => attemptLeave(n + 1), 150);
-  };
-
-  // 【场景 3：点桌面图标/空白】lp=0 且未置顶 → 与场景 1 共用验证路径，
-  //   但窗口始终显示 → 渐进验证 6 次全失败 → 安静放弃（不置顶）。
-  //   （由 attemptEnter 的 hasVisibleAppWindow 结果天然区分，无独立代码）
+  //   b) lp=0 且已置顶（按钮恢复时前台可能无窗口接管）→ 即时判定「窗口回来了」→ 取消
+  //
+  // 【场景 3：点桌面图标/空白】lp=0 且未置顶 → 与场景 1 共用判定，
+  //   窗口始终显示 → 判定不成立 → 安静放弃（不置顶）。
 
   const shellProc = koffi.register((h, msg, wp, lp) => {
     if (msg === WM_SHELLHOOK && wp === HSHELL_WINDOWACTIVATED && !win.isDestroyed()) {
       if (lp !== 0) {
-        if (desktopMode) applyTopmost(false);            // 场景 2a：窗口接管，立即取消
+        if (desktopMode) applyTopmost(false);              // 场景 2a：窗口接管，立即取消
+      } else if (desktopMode) {
+        if (hasVisibleAppWindow()) applyTopmost(false);    // 场景 2b：窗口已回来，取消
       } else {
-        if (desktopMode) attemptLeave(0);                // 场景 2b：置顶态，验证窗口恢复
-        else attemptEnter(0);                            // 场景 1 / 场景 3：验证窗口全消失
+        if (!hasVisibleAppWindow()) applyTopmost(true);    // 场景 1 / 3：窗口全消失才置顶
       }
     }
     return CallWindowProcW(prevProc, h, msg, wp, lp);
