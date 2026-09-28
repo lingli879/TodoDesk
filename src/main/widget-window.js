@@ -35,7 +35,10 @@ function startWinDGuard(win) {
   const GetWindowLongW = lib.func('int GetWindowLongW(intptr_t h, int i)');
 
   const WS_VISIBLE = 0x10000000;
+  const WS_CAPTION = 0x00c00000;
   const WS_EX_APPWINDOW = 0x40000;
+  const WS_EX_TOOLWINDOW = 0x80;
+  const WS_EX_TOPMOST = 0x8;
   const hwnd = win.getNativeWindowHandle().readUInt32LE(0);
   let topmost = false;
   let lastFlip = 0;
@@ -52,9 +55,13 @@ function startWinDGuard(win) {
     const cb = koffi.register((h) => {
       if (h === hwnd) return 1;
       const ex = GetWindowLongW(h, -20) >>> 0;
-      if (!(ex & WS_EX_APPWINDOW)) return 1;
-      if (!((GetWindowLongW(h, -16) >>> 0) & WS_VISIBLE)) return 1;
+      if (ex & WS_EX_TOOLWINDOW) return 1; // 工具窗/skipTaskbar 悬浮物
+      if (ex & WS_EX_TOPMOST) return 1;    // 置顶桌面歌词等悬浮
+      const style = GetWindowLongW(h, -16) >>> 0;
+      if (!(style & WS_VISIBLE)) return 1;
       if (!IsWindowVisible(h) || IsIconic(h)) return 1;
+      // 应用窗口 = 有任务栏按钮标志或标准标题框（Win11 WinUI 应用如记事本无 APPWINDOW）
+      if (!((ex & WS_EX_APPWINDOW) || (style & WS_CAPTION))) return 1;
       ordinary++;
       return 1;
     }, koffi.pointer(EnumWindowsProc));
