@@ -1,10 +1,11 @@
 'use strict';
 // 桌面贴窗口：透明/无边框/可缩放、多屏位置恢复、矩形去抖持久化、全局快捷键。
-// Win+D（16ce6c5 验证通过版）：GetAsyncKeyState 轮询组合边沿 → toggle → setAlwaysOnTop
-// 切换置顶（Win11「显示桌面」由 DWM 收起一切非置顶窗口的画面，置顶层豁免）。
-// 任务栏「显示桌面」按钮：同一轮询里检测「左键按下边沿 + 光标在按钮区域」（主屏最右缘
-// 任务栏高度内）→ 与键盘完全相同的翻转。不用鼠标钩子（高频回调进 JS 易崩且断钩子链）；
-// 不用窗口状态观测（按钮走 DWM 收起，窗口状态零变化，只有键盘 Win+D 才真最小化）。
+// Win+D / 任务栏「显示桌面」按钮：Shell 钩子监听（RegisterShellHookWindow + 子类化窗口
+// 过程拦截 WM_SHELLHOOK）。实测信号：显示桌面切换时 HSHELL_WINDOWACTIVATED(0x4) 且
+// lParam=0（无窗口被激活，显示桌面的专属特征）；恢复时 lParam=窗口句柄。键盘与按钮
+// 走同一 Shell 路径，单一事件源统一覆盖。状态化规则（非盲翻转，防乱序双翻）：
+//   桌面激活(lp=0)  且未置顶 → 置顶（豁免 DWM 显示桌面收起）
+//   窗口激活(lp≠0)  且已置顶 → 取消置顶
 // 启动时沉底（贴桌面层级）。拖动/缩放走应用层 IPC（见 main.js）。
 const { BrowserWindow, screen, globalShortcut } = require('electron');
 const fs = require('node:fs');
@@ -13,23 +14,24 @@ const { fitRectToDisplays, MARGIN } = require('../shared/geometry');
 
 const DEFAULT_SIZE = { width: 300, height: 420 };
 const MIN_SIZE = { width: 240, height: 200 };
-const VK_LWIN = 0x5b;
-const VK_D = 0x44;
-const VK_LBUTTON = 0x01;
 
 function setupLayering(win) {
   const koffi = require('koffi');
   const lib = koffi.load('user32.dll');
   const SetWindowPos = lib.func('int SetWindowPos(intptr_t hWnd, intptr_t hWndInsertAfter, int x, int y, int cx, int cy, unsigned int uFlags)');
-  const GetAsyncKeyState = lib.func('short GetAsyncKeyState(int vKey)');
-  const GetCursorPos = lib.func('int GetCursorPos(long *lpPoint)');
-  const GetSystemMetrics = lib.func('int GetSystemMetrics(int nIndex)');
-  const SystemParametersInfoW = lib.func('int SystemParametersInfoW(unsigned int uiAction, unsigned int uiParam, void *pvParam, unsigned int winIni)');
+  const RegisterShellHookWindow = lib.func('int RegisterShellHookWindow(intptr_t hwnd)');
+  const DeregisterShellHookWindow = lib.func('int DeregisterShellHookWindow(intptr_t hwnd)');
+  const RegisterWindowMessageW = lib.func('unsigned int RegisterWindowMessageW(const wchar_t *lpString)');
+  const SetWindowLongPtrW = lib.func('intptr_t SetWindowLongPtrW(intptr_t h, int index, intptr_t newLong)');
+  const CallWindowProcW = lib.func('intptr_t CallWindowProcW(intptr_t prev, intptr_t h, unsigned int msg, intptr_t wp, intptr_t lp)');
+  const WndProcCb = koffi.proto('intptr_t WndProc(intptr_t hwnd, unsigned int msg, intptr_t wp, intptr_t lp)');
 
   const HWND_BOTTOM = 1;
   const SWP_NOSIZE = 0x0001;
   const SWP_NOMOVE = 0x0002;
   const SWP_NOACTIVATE = 0x0010;
+  const GWLP_WNDPROC = -4;
+  const HSHELL_WINDOWACTIVATED = 0x4;
   const hwnd = win.getNativeWindowHandle().readUInt32LE(0);
 
   const sink = () => {
@@ -37,45 +39,31 @@ function setupLayering(win) {
   };
   const rise = () => { try { win.moveTop(); } catch { /* 窗口竞态 */ } };
 
-  const applyTopmost = (on) => {
-    try { win.setAlwaysOnTop(on, 'screen-saver'); } catch { /* 竞态：下次自愈 */ }
-  };
-
   let desktopMode = false;
-  const flip = () => {
-    desktopMode = !desktopMode;
-    applyTopmost(desktopMode);
+  const applyTopmost = (on) => {
+    desktopMode = on;
+    try { win.setAlwaysOnTop(on, 'screen-saver'); } catch { /* 竞态：下次事件自愈 */ }
   };
 
-  // 按钮/键盘统一在 20ms 轮询里检测（本进程 DPI aware，屏幕 API 返回物理像素与鼠标坐标同系）
-  const waBuf = koffi.alloc('long', 4);
-  SystemParametersInfoW(48 /*SPI_GETWORKAREA*/, 0, waBuf, 0);
-  const [, , , waBottom] = koffi.decode(waBuf, 'long', 4);
-  const screenW = GetSystemMetrics(0 /*SM_CXSCREEN*/);
-  const BTN_X = screenW - 26; // 按钮 + 点击容差 // 「显示桌面」按钮在任务栏最右缘的窄条
-
-  let prevCombo = false;
-  let prevBtn = false;
-  const timer = setInterval(() => {
-    if (win.isDestroyed()) { clearInterval(timer); return; }
-    // 键盘 Win+D 组合边沿
-    const combo = !!(GetAsyncKeyState(VK_LWIN) & 0x8000) && !!(GetAsyncKeyState(VK_D) & 0x8000);
-    if (combo && !prevCombo) flip();
-    prevCombo = combo;
-    // 任务栏「显示桌面」按钮：左键按下 + 光标在按钮区域。
-    // bit0(0x1)=自上次调用以来按过（捕获快于轮询间隔的快速点击），0x8000=当前按住
-    const st = GetAsyncKeyState(VK_LBUTTON);
-    const btnDown = !!(st & 0x8000) || !!(st & 0x1);
-    if (btnDown && !prevBtn) {
-      const pt = koffi.alloc('long', 2);
-      GetCursorPos(pt);
-      const [mx, my] = koffi.decode(pt, 'long', 2);
-      if (mx >= BTN_X && my >= waBottom) flip();
+  // Shell 钩子：显示桌面切换（键盘 Win+D 与任务栏按钮同源）都会激活"无窗口"（lp=0）
+  RegisterShellHookWindow(hwnd);
+  const WM_SHELLHOOK = RegisterWindowMessageW('SHELLHOOK');
+  const shellProc = koffi.register((h, msg, wp, lp) => {
+    if (msg === WM_SHELLHOOK && wp === HSHELL_WINDOWACTIVATED && !win.isDestroyed()) {
+      if (lp === 0 && !desktopMode) applyTopmost(true);   // 显示桌面激活：置顶豁免
+      else if (lp !== 0 && desktopMode) applyTopmost(false); // 窗口接管：取消置顶
     }
-    prevBtn = btnDown;
-  }, 20);
+    return CallWindowProcW(prevProc, h, msg, wp, lp);
+  }, koffi.pointer(WndProcCb));
+  const prevProc = SetWindowLongPtrW(hwnd, GWLP_WNDPROC, shellProc);
 
-  win.once('closed', () => clearInterval(timer));
+  win.once('closed', () => {
+    try {
+      SetWindowLongPtrW(hwnd, GWLP_WNDPROC, prevProc);
+      DeregisterShellHookWindow(hwnd);
+    } catch { /* 已销毁 */ }
+    koffi.unregister(shellProc);
+  });
 
   return { sink, rise };
 }
