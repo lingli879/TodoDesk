@@ -35,6 +35,7 @@ function setupLayering(win) {
   const SWP_NOMOVE = 0x0002;
   const SWP_NOACTIVATE = 0x0010;
   const EVENT_OBJECT_FOCUS = 0x8005;
+  const EVENT_SYSTEM_FOREGROUND = 0x0003;
   const WINEVENT_OUTOFCONTEXT = 0;
   const hwnd = win.getNativeWindowHandle().readUInt32LE(0);
 
@@ -57,6 +58,21 @@ function setupLayering(win) {
   win.on('focus', rise);
   win.on('blur', () => { if (!desktopMode) sink(); });
 
+  // ---- 前台切换守卫（用户指定）：系统激活的窗口只要不是 TodoDesk 的，桌面贴就沉底 ----
+  // 覆盖桌面贴从未获焦时（无 blur）的切换场景。判据 = 前台窗口所属进程：
+  // TodoDesk 主进程的窗口（桌面贴/主窗口/详情窗）豁免；Win+D 置顶豁免期间不沉。
+  const GetForegroundWindow = lib.func('intptr_t GetForegroundWindow()');
+  const GetWindowThreadProcessId = lib.func('unsigned long GetWindowThreadProcessId(intptr_t h, unsigned long *pid)');
+  const fgCb = koffi.register(() => {
+    if (win.isDestroyed() || desktopMode) return;
+    const fg = GetForegroundWindow();
+    if (!fg || fg === hwnd) return;
+    const pidBuf = koffi.alloc('unsigned long', 1);
+    GetWindowThreadProcessId(fg, pidBuf);
+    if (koffi.decode(pidBuf, 'unsigned long', 1)[0] !== process.pid) sink();
+  }, koffi.pointer(WinEventProcCb));
+  const fgHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, 0, fgCb, 0, 0, WINEVENT_OUTOFCONTEXT);
+
   // ---- 键盘 Win+D：组合键边沿 ----
   let prevCombo = false;
   const timer = setInterval(() => {
@@ -69,8 +85,21 @@ function setupLayering(win) {
   // ---- 任务栏「显示桌面」按钮：焦点序列指纹（任务栏获焦 → 500ms 内目标窗口获焦）----
   // 进桌面：任务栏 → Progman（桌面接管）；恢复：任务栏 → 应用窗口（排除任务栏
   // 自身 XAML 子元素与弹出层 CoreWindow）。点桌面本身无前置任务栏焦点，不误触。
+  // 附加判据：应用启动时任务栏按钮也会闪烁获焦（非用户点击）——故任务栏获焦时
+  // 还要求光标在任务栏矩形内（矩形实时取自 Shell_TrayWnd，分辨率无关）才算用户点击。
   const trayFocusAt = { t: 0 };
   const GetWindowLongW = lib.func('int GetWindowLongW(intptr_t h, int i)');
+  const GetCursorPos = lib.func('int GetCursorPos(long *lpPoint)');
+  const GetWindowRect = lib.func('int GetWindowRect(intptr_t h, long *rc)');
+  const cursorInTray = (tray) => {
+    const rc = koffi.alloc('long', 4);
+    GetWindowRect(tray, rc);
+    const [l, t, r, b] = koffi.decode(rc, 'long', 4);
+    const pt = koffi.alloc('long', 2);
+    GetCursorPos(pt);
+    const [x, y] = koffi.decode(pt, 'long', 2);
+    return x >= l && x < r && y >= t && y < b;
+  };
   const isAppWindow = (h) => {
     const ex = GetWindowLongW(h, -20) >>> 0;
     const style = GetWindowLongW(h, -16) >>> 0;
@@ -81,7 +110,8 @@ function setupLayering(win) {
     const tray = FindWindowW('Shell_TrayWnd', null);
     const progman = FindWindowW('Progman', null);
     if (h === tray) {
-      trayFocusAt.t = Date.now();
+      // 仅当光标在任务栏内才算用户点击任务栏（应用启动时的任务栏闪烁获焦不算）
+      trayFocusAt.t = cursorInTray(tray) ? Date.now() : 0;
       return;
     }
     if (h === progman) {
@@ -103,7 +133,9 @@ function setupLayering(win) {
   win.once('closed', () => {
     clearInterval(timer);
     if (focusHook) UnhookWinEvent(focusHook);
+    if (fgHook) UnhookWinEvent(fgHook);
     koffi.unregister(focusCb);
+    koffi.unregister(fgCb);
   });
 
   return { sink, rise };
