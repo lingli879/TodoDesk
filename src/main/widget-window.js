@@ -19,6 +19,7 @@ const DEFAULT_SIZE = { width: 300, height: 420 };
 const MIN_SIZE = { width: 240, height: 200 };
 const VK_LWIN = 0x5b;
 const VK_D = 0x44;
+const VK_LBUTTON = 0x01;
 
 function setupLayering(win) {
   const koffi = require('koffi');
