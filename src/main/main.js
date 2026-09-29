@@ -4,6 +4,7 @@ const { app, dialog, ipcMain, shell, Tray, Menu, nativeImage, Notification, scre
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+const koffi = require('koffi');
 const store = require('../shared/store');
 const { fitRectToDisplays } = require('../shared/geometry');
 const logger = require('./logger');
@@ -192,16 +193,46 @@ let winResize = null; // { sx, sy, w, h }：按下时的屏幕坐标 + 窗口尺
 
 const widgetAlive = () => widgetWin && !widgetWin.isDestroyed();
 
+// 拖动走原生 SetWindowPos（物理像素、SWP_NOSIZE）：Electron setPosition 在多 DPI 屏
+// 机器上存在换算 bug——每次调用高度 +1 DIP 持续累积（实测单屏内即复现：205→225），
+// 表现为「移动时窗体往下变大」。原生通道物理尺寸恒定；结束时 setBounds 把实际
+// 位置同步回 Electron 内部状态（尺寸取拖动前记录，消除漂移）。
+let nativeUser32 = null;
+function nativeRect(win) {
+  if (!nativeUser32) nativeUser32 = require('koffi').load('user32.dll');
+  const GWR = nativeUser32.func('int GetWindowRect(intptr_t h, long *rc)');
+  const a = koffi.alloc('long', 4);
+  GWR(win.getNativeWindowHandle().readUInt32LE(0), a);
+  return koffi.decode(a, 'long', 4);
+}
+function nativeMoveTo(win, physX, physY) {
+  if (!nativeUser32) nativeUser32 = require('koffi').load('user32.dll');
+  const SWP = nativeUser32.func('int SetWindowPos(intptr_t h, intptr_t after, int x, int y, int cx, int cy, unsigned int f)');
+  const hwnd = win.getNativeWindowHandle().readUInt32LE(0);
+  SWP(hwnd, 0, physX, physY, 0, 0, 0x0001 /*NOSIZE*/ | 0x0010 /*NOACTIVATE*/ | 0x0004 /*NOZORDER*/);
+}
+
 function beginWidgetDrag({ screenX, screenY }) {
   if (!widgetAlive()) return;
-  const [x, y] = widgetWin.getPosition();
-  winDrag = { sx: screenX, sy: screenY, x, y };
+  const [w, h] = widgetWin.getSize();
+  const [physL, physT] = nativeRect(widgetWin);
+  const sf = screen.getDisplayMatching(widgetWin.getBounds()).scaleFactor || 1;
+  winDrag = { sx: screenX, sy: screenY, physL, physT, sf, w, h };
 }
 function dragWidget({ screenX, screenY }) {
   if (!winDrag || !widgetAlive()) return;
-  widgetWin.setPosition(Math.round(winDrag.x + screenX - winDrag.sx), Math.round(winDrag.y + screenY - winDrag.sy));
+  const dxPhys = Math.round((screenX - winDrag.sx) * winDrag.sf);
+  const dyPhys = Math.round((screenY - winDrag.sy) * winDrag.sf);
+  nativeMoveTo(widgetWin, winDrag.physL + dxPhys, winDrag.physT + dyPhys);
 }
-function endWidgetDrag() { winDrag = null; }
+function endWidgetDrag() {
+  if (winDrag && widgetAlive()) {
+    // 同步 Chromium 内部状态到实际位置（尺寸保持拖动前 DIP 值，消除换算漂移）
+    const [l, t] = nativeRect(widgetWin);
+    widgetWin.setBounds({ x: Math.round(l / winDrag.sf), y: Math.round(t / winDrag.sf), width: winDrag.w, height: winDrag.h });
+  }
+  winDrag = null;
+}
 
 function beginWidgetResize({ screenX, screenY }) {
   if (!widgetAlive()) return;

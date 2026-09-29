@@ -8,6 +8,7 @@ function harness() {
   const sent = [];
   const opened = [];
   const winOps = [];
+  let quitCalls = 0;
   const state = seedState('2026-09-25T00:00:00Z');
   const services = {
     getState: () => state,
@@ -15,6 +16,7 @@ function harness() {
     broadcast: (ch) => sent.push(ch),
     openDataFolder: () => {},
     showMainWindow: () => {},
+    exitApp: () => { quitCalls += 1; },
     toggleWidget: () => {},
     applyHotkey: () => true,
     openDetail: (id) => { opened.push(id); },
@@ -30,7 +32,7 @@ function harness() {
     on: (ch, fn) => { handlers[ch] = fn; },
   }, services);
   const call = (ch, arg) => handlers[ch]({ sender: {} }, arg);
-  return { handlers, call, state, sent, opened, winOps };
+  return { handlers, call, state, sent, opened, winOps, quitCalls: () => quitCalls };
 }
 
 test('todos:create 校验拒绝空标题', async () => {
