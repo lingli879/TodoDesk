@@ -58,18 +58,21 @@ function setupLayering(win) {
   win.on('focus', rise);
   win.on('blur', () => { if (!desktopMode) sink(); });
 
-  // ---- 前台切换守卫（用户指定）：系统激活的窗口只要不是 TodoDesk 的，桌面贴就沉底 ----
-  // 覆盖桌面贴从未获焦时（无 blur）的切换场景。判据 = 前台窗口所属进程：
-  // TodoDesk 主进程的窗口（桌面贴/主窗口/详情窗）豁免；Win+D 置顶豁免期间不沉。
+  // ---- 前台切换守卫（用户指定）：系统激活的窗口只要不是 TodoDesk 的——
+  // 取消置顶状态（撤销 Win+D 豁免）并沉底。覆盖桌面贴从未获焦（无 blur）的场景。
+  // 判据 = 前台窗口所属进程：TodoDesk 主进程的窗口（桌面贴/主窗口/详情窗）豁免。
   const GetForegroundWindow = lib.func('intptr_t GetForegroundWindow()');
   const GetWindowThreadProcessId = lib.func('unsigned long GetWindowThreadProcessId(intptr_t h, unsigned long *pid)');
   const fgCb = koffi.register(() => {
-    if (win.isDestroyed() || desktopMode) return;
+    if (win.isDestroyed()) return;
     const fg = GetForegroundWindow();
     if (!fg || fg === hwnd) return;
     const pidBuf = koffi.alloc('unsigned long', 1);
     GetWindowThreadProcessId(fg, pidBuf);
-    if (koffi.decode(pidBuf, 'unsigned long', 1)[0] !== process.pid) sink();
+    if (koffi.decode(pidBuf, 'unsigned long', 1)[0] === process.pid) return;
+    // 前台切到非 TodoDesk：复位豁免状态；原子沉底（HWND_BOTTOM 隐含摘除 topmost 位）
+    desktopMode = false;
+    sink();
   }, koffi.pointer(WinEventProcCb));
   const fgHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, 0, fgCb, 0, 0, WINEVENT_OUTOFCONTEXT);
 
