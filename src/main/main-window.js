@@ -12,6 +12,7 @@ function createMainWindow() {
     minWidth: 760,
     minHeight: 480,
     show: false,
+    icon: path.join(__dirname, '../../build/tray.png'), // 与托盘同源图案
     webPreferences: fs.existsSync(preloadPath) ? { preload: preloadPath } : {},
   });
   win.loadFile(path.join(__dirname, '../renderer/app/index.html'));

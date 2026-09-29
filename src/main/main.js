@@ -40,6 +40,8 @@ function resolveDataDir() {
 
 async function bootstrap() {
   app.setAppUserModelId('com.tododesk.app');
+  // 主程序不需要应用菜单栏（File/Edit/View…），导航由窗口内左侧栏承担
+  Menu.setApplicationMenu(null);
   dataDir = resolveDataDir();
   try {
     store.ensureWritable(dataDir);
@@ -85,8 +87,8 @@ async function bootstrap() {
     applyHotkey: (accel) => applyHotkey(accel, toggleWidget),
     setAutoLaunch: (v) => app.setLoginItemSettings({ openAtLogin: !!v }),
     openDetail,
+    exitApp,
     beginWidgetDrag, dragWidget, endWidgetDrag,
-    beginWidgetResize, resizeWidgetTo, endWidgetResize,
   });
   startWatchdog();
 }
@@ -189,7 +191,6 @@ function toggleWidget() {
 
 // ---- 桌面贴应用层拖动/缩放（附着桌面层后系统 HTCAPTION/HTBORDER 循环失效）----
 let winDrag = null;   // { sx, sy, x, y }：按下时的屏幕坐标 + 窗口位置
-let winResize = null; // { sx, sy, w, h }：按下时的屏幕坐标 + 窗口尺寸
 
 const widgetAlive = () => widgetWin && !widgetWin.isDestroyed();
 
@@ -233,20 +234,6 @@ function endWidgetDrag() {
   }
   winDrag = null;
 }
-
-function beginWidgetResize({ screenX, screenY }) {
-  if (!widgetAlive()) return;
-  const [w, h] = widgetWin.getSize();
-  winResize = { sx: screenX, sy: screenY, w, h };
-}
-function resizeWidgetTo({ screenX, screenY }) {
-  if (!winResize || !widgetAlive()) return;
-  const w = Math.max(MIN_SIZE.width, Math.round(winResize.w + screenX - winResize.sx));
-  const h = Math.max(MIN_SIZE.height, Math.round(winResize.h + screenY - winResize.sy));
-  widgetWin.setSize(w, h);
-}
-function endWidgetResize() { winResize = null; }
-
 
 // ---- 托盘 ----
 function createTray() {

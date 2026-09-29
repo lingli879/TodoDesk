@@ -23,9 +23,6 @@ function harness() {
     beginWidgetDrag: (p) => winOps.push(['begin-drag', p]),
     dragWidget: (p) => winOps.push(['drag', p]),
     endWidgetDrag: () => winOps.push(['end-drag']),
-    beginWidgetResize: (p) => winOps.push(['begin-resize', p]),
-    resizeWidgetTo: (p) => winOps.push(['resize', p]),
-    endWidgetResize: () => winOps.push(['end-resize']),
   };
   registerIpc({
     handle: (ch, fn) => { handlers[ch] = fn; },
@@ -48,6 +45,13 @@ test('detail:open 转发待办 id 给主进程服务', async () => {
   assert.deepEqual(h.opened, ['t-123']);
 });
 
+test('app:quit 转发给退出服务', async () => {
+  const h = harness();
+  const r = await h.call('app:quit');
+  assert.equal(r.ok, true);
+  assert.equal(h.quitCalls(), 1);
+});
+
 test('widget:begin-drag/drag-move 转发给窗口服务', () => {
   const h = harness();
   h.call('widget:begin-drag', { screenX: 10, screenY: 20 });
@@ -55,18 +59,6 @@ test('widget:begin-drag/drag-move 转发给窗口服务', () => {
   assert.deepEqual(h.winOps, [
     ['begin-drag', { screenX: 10, screenY: 20 }],
     ['drag', { screenX: 30, screenY: 45 }],
-  ]);
-});
-
-test('widget:begin-resize/resize-move/end-resize 顺序转发', () => {
-  const h = harness();
-  h.call('widget:begin-resize', { screenX: 0, screenY: 0 });
-  h.call('widget:resize-move', { screenX: 100, screenY: 60 });
-  h.call('widget:end-resize');
-  assert.deepEqual(h.winOps, [
-    ['begin-resize', { screenX: 0, screenY: 0 }],
-    ['resize', { screenX: 100, screenY: 60 }],
-    ['end-resize'],
   ]);
 });
 

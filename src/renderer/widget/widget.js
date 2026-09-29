@@ -367,20 +367,5 @@ windowDrag(document.getElementById('dragHandle'));
 const doneSummary = document.querySelector('#done summary');
 if (doneSummary) windowDrag(doneSummary);
 
-document.getElementById('resizeHandle').addEventListener('mousedown', (e) => {
-  if (e.button !== 0) return;
-  e.preventDefault();
-  e.stopPropagation();
-  window.todoDesk.widget.beginResize({ screenX: e.screenX, screenY: e.screenY });
-  const move = (ev) => window.todoDesk.widget.resizeMove({ screenX: ev.screenX, screenY: ev.screenY });
-  const up = () => {
-    window.removeEventListener('mousemove', move);
-    window.removeEventListener('mouseup', up);
-    window.todoDesk.widget.endResize();
-  };
-  window.addEventListener('mousemove', move);
-  window.addEventListener('mouseup', up);
-});
-
 refresh();
 applyOpacity();

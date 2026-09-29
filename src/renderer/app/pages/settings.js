@@ -68,6 +68,15 @@ export async function renderSettingsPage(page) {
   hotkeyRow.append(recBtn, hotkeyErr);
   box.append(hotkeyRow);
 
+  // ---- 立即显示/隐藏桌面贴（与快捷键同一 toggle 路径）----
+  const widgetRow = row('显示/隐藏桌面贴');
+  const toggleBtn = document.createElement('button');
+  toggleBtn.className = 'ghost';
+  toggleBtn.textContent = '立即切换';
+  toggleBtn.addEventListener('click', () => window.todoDesk.widget.toggle());
+  widgetRow.append(toggleBtn);
+  box.append(widgetRow);
+
   window.todoDesk.onHotkeyFailed(() => {
     hotkeyErr.textContent = '快捷键被其他程序占用，请换一个';
     recBtn.textContent = '点击重新录制';

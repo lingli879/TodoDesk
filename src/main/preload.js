@@ -48,12 +48,12 @@ contextBridge.exposeInMainWorld('todoDesk', {
     beginDrag: (p) => ipcRenderer.send('widget:begin-drag', p),
     dragMove: (p) => ipcRenderer.send('widget:drag-move', p),
     endDrag: () => ipcRenderer.send('widget:end-drag'),
-    beginResize: (p) => ipcRenderer.send('widget:begin-resize', p),
-    resizeMove: (p) => ipcRenderer.send('widget:resize-move', p),
-    endResize: () => ipcRenderer.send('widget:end-resize'),
   },
   detail: {
     open: invoke('detail:open'),
+  },
+  app: {
+    quit: invoke('app:quit'),
   },
   openDataFolder: invoke('openDataFolder'),
   onDataChange: (cb) => {

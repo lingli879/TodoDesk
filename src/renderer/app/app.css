@@ -21,13 +21,6 @@ aside {
   border-right: 1px solid var(--hairline);
 }
 
-.brand {
-  font-weight: 600;
-  font-size: 15px;
-  padding: 6px 12px 18px;
-  color: var(--accent);
-}
-
 aside nav { display: flex; flex-direction: column; gap: 2px; }
 
 aside nav button {

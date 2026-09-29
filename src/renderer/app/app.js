@@ -59,8 +59,9 @@ document.querySelector('aside nav').addEventListener('click', (e) => {
   if (b) showPage(b.dataset.page);
 });
 
-document.getElementById('showWidget').addEventListener('click', () => {
-  window.todoDesk.widget.show();
+// 退出：与托盘"退出"同一主进程路径（exitApp，含看门狗优雅退出标记）
+document.getElementById('quitApp').addEventListener('click', () => {
+  window.todoDesk.app.quit();
 });
 
 window.todoDesk.onDataChange(() => showPage(current));
