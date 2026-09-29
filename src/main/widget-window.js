@@ -45,11 +45,19 @@ function setupLayering(win) {
   const rise = () => { try { win.moveTop(); } catch { /* 窗口竞态 */ } };
 
   let desktopMode = false;
+  const tglog = (s) => { try { fs.appendFileSync('tg-fc.log', s + '\n'); } catch { /* 忽略 */ } };
   const toggle = () => {
     desktopMode = !desktopMode;
+    tglog('[tg] -> ' + desktopMode);
     try {
-      if (desktopMode) win.setAlwaysOnTop(true, 'screen-saver');
-      else sink();
+      if (desktopMode) {
+        win.setAlwaysOnTop(true, 'screen-saver');
+      } else {
+        // 显式摘除 topmost 位再沉底：实测 Win11 26200 上 HWND_BOTTOM 不摘 topmost
+        // 位（窗口会留在置顶层底部），必须两步；同一同步块执行，同帧合并不闪
+        win.setAlwaysOnTop(false, 'screen-saver');
+        sink();
+      }
     } catch { /* 窗口竞态 */ }
   };
 
@@ -67,10 +75,13 @@ function setupLayering(win) {
     if (win.isDestroyed()) return;
     const fg = GetForegroundWindow();
     if (!fg || fg === hwnd) return;
+    // 桌面系前台（Progman/WorkerW）= 桌面露出的正常状态（Win+D/按钮进入显示桌面
+    // 时前台会切给桌面）：排除，否则前台守卫会撤销刚建立的置顶豁免（时序竞态）
+    if (fg === FindWindowW('Progman', null) || fg === FindWindowW('WorkerW', null)) return;
     const pidBuf = koffi.alloc('unsigned long', 1);
     GetWindowThreadProcessId(fg, pidBuf);
     if (koffi.decode(pidBuf, 'unsigned long', 1)[0] === process.pid) return;
-    // 前台切到非 TodoDesk：复位豁免状态；原子沉底（HWND_BOTTOM 隐含摘除 topmost 位）
+    // 前台切到非 TodoDesk 应用：复位豁免状态；原子沉底（HWND_BOTTOM 隐含摘除 topmost 位）
     desktopMode = false;
     sink();
   }, koffi.pointer(WinEventProcCb));
@@ -112,9 +123,17 @@ function setupLayering(win) {
     if (win.isDestroyed()) return;
     const tray = FindWindowW('Shell_TrayWnd', null);
     const progman = FindWindowW('Progman', null);
+    if (h === progman) {
+      const age = trayFocusAt.t ? Date.now() - trayFocusAt.t : 'never';
+      try { fs.appendFileSync('tg-fc.log', '[fc] progman age=' + age + ' dm=' + desktopMode + '\n'); } catch { /* 忽略 */ }
+    } else if (h === tray) {
+      try { fs.appendFileSync('tg-fc.log', '[fc] tray focus\n'); } catch { /* 忽略 */ }
+    }
     if (h === tray) {
-      // 仅当光标在任务栏内才算用户点击任务栏（应用启动时的任务栏闪烁获焦不算）
-      trayFocusAt.t = cursorInTray(tray) ? Date.now() : 0;
+      // 仅当光标在任务栏内且左键按下过（点按钮必有鼠标按下）才算用户点击任务栏；
+      // 应用启动/Win+D 时任务栏的闪烁获焦（无鼠标按下）不算
+      const ms = GetAsyncKeyState(VK_LBUTTON);
+      trayFocusAt.t = (cursorInTray(tray) && ((ms & 0x8000) || (ms & 0x1))) ? Date.now() : 0;
       return;
     }
     if (h === progman) {
