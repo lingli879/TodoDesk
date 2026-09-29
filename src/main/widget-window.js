@@ -45,10 +45,8 @@ function setupLayering(win) {
   const rise = () => { try { win.moveTop(); } catch { /* 窗口竞态 */ } };
 
   let desktopMode = false;
-  const tglog = (s) => { try { fs.appendFileSync('tg-fc.log', s + '\n'); } catch { /* 忽略 */ } };
   const toggle = () => {
     desktopMode = !desktopMode;
-    tglog('[tg] -> ' + desktopMode);
     try {
       if (desktopMode) {
         win.setAlwaysOnTop(true, 'screen-saver');
@@ -123,12 +121,6 @@ function setupLayering(win) {
     if (win.isDestroyed()) return;
     const tray = FindWindowW('Shell_TrayWnd', null);
     const progman = FindWindowW('Progman', null);
-    if (h === progman) {
-      const age = trayFocusAt.t ? Date.now() - trayFocusAt.t : 'never';
-      try { fs.appendFileSync('tg-fc.log', '[fc] progman age=' + age + ' dm=' + desktopMode + '\n'); } catch { /* 忽略 */ }
-    } else if (h === tray) {
-      try { fs.appendFileSync('tg-fc.log', '[fc] tray focus\n'); } catch { /* 忽略 */ }
-    }
     if (h === tray) {
       // 仅当光标在任务栏内且左键按下过（点按钮必有鼠标按下）才算用户点击任务栏；
       // 应用启动/Win+D 时任务栏的闪烁获焦（无鼠标按下）不算
