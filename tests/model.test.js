@@ -95,6 +95,8 @@ test('validateSettingsPatch：白名单/类型/范围/快捷键须带修饰键',
   assert.equal(m.validateSettingsPatch({ hacker: 1 }).valid, false, '未知键拒绝');
   assert.equal(m.validateSettingsPatch({ hotkey: 'T' }).valid, false, '裸键快捷键拒绝');
   assert.equal(m.validateSettingsPatch({ hotkey: 'Control+Alt+T' }).valid, true);
+  assert.equal(m.validateSettingsPatch({ newTodoHotkey: 'Control+Shift+N' }).valid, true, '新建待办快捷键在白名单');
+  assert.equal(m.validateSettingsPatch({ newTodoHotkey: 'N' }).valid, false, '新建待办快捷键裸键拒绝');
   assert.equal(m.validateSettingsPatch({ widgetVisibleCategoryIds: ['a', 'b'] }).valid, true);
   assert.equal(m.validateSettingsPatch({ widgetVisibleCategoryIds: 'a' }).valid, false);
   assert.equal(m.validateSettingsPatch({ widgetPosition: { x: 1, y: 2 } }).valid, true);
@@ -102,6 +104,10 @@ test('validateSettingsPatch：白名单/类型/范围/快捷键须带修饰键',
   assert.equal(m.validateSettingsPatch({ widgetSize: null }).valid, true);
   assert.equal(m.validateSettingsPatch({ autoLaunch: true, showCompletedInWidget: false, widgetGroupByCategory: true, widgetShowUncategorized: false }).valid, true);
   assert.equal(m.validateSettingsPatch({ autoLaunch: 'yes' }).valid, false);
+});
+
+test('seedState 默认设置含新建待办快捷键 Control+Shift+N', () => {
+  assert.equal(m.seedState('2026-09-25T00:00:00Z').settings.newTodoHotkey, 'Control+Shift+N');
 });
 
 test('showCompletedInWidget=false 时桌面贴视图不含当天完成', () => {

@@ -61,7 +61,7 @@ export async function renderTodosPage(page) {
   const thead = document.createElement('thead');
   const tr = document.createElement('tr');
   tr.append(Object.assign(document.createElement('th'), { style: 'width:32px' }));
-  tr.append(th('标题'));
+  tr.append(th('任务'));
   tr.append(th('分类'));
   // 时间列头可点击排序（spec §3），再点切换升降序
   for (const [label, key] of [['开始', 'startTime'], ['完成', 'endTime'], ['截止', 'dueTime']]) {
@@ -117,7 +117,9 @@ export async function renderTodosPage(page) {
     tr.append(timeTd(t.endTime));
     tr.append(timeTd(t.dueTime, overdue));
 
-    tr.append(tdText(t.notes || ''));
+    const notesTd = tdText(t.notes || '');
+    notesTd.className = 'notes-cell';
+    tr.append(notesTd);
 
     const actTd = document.createElement('td');
     actTd.className = 'actions';
@@ -132,6 +134,13 @@ export async function renderTodosPage(page) {
   }
   table.append(tbody);
   page.append(table);
+
+  // 截断列的悬停提示：布局完成后检测溢出，仅在显示不完整时挂 title（全文）
+  requestAnimationFrame(() => {
+    for (const td of tbody.querySelectorAll('td.title-cell, td.notes-cell')) {
+      if (td.scrollWidth > td.clientWidth) td.title = td.textContent;
+    }
+  });
 
   // ---- 批量删除 ----
   const batchBar = document.createElement('div');

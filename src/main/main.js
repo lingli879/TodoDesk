@@ -9,9 +9,9 @@ const store = require('../shared/store');
 const { fitRectToDisplays } = require('../shared/geometry');
 const logger = require('./logger');
 const { registerIpc } = require('./ipc');
-const { createWidgetWindow, applyHotkey, MIN_SIZE } = require('./widget-window');
+const { createWidgetWindow, applyHotkeys, MIN_SIZE } = require('./widget-window');
 const { createMainWindow } = require('./main-window');
-const { createDetailWindow, getDetailWindow } = require('./detail-window');
+const { createDetailWindow, openNewTodoWindow, getDetailWindow } = require('./detail-window');
 
 let dataDir = null;
 let state = null;
@@ -84,7 +84,7 @@ async function bootstrap() {
     showWidget,
     hideWidget,
     toggleWidget,
-    applyHotkey: (accel) => applyHotkey(accel, toggleWidget),
+    applyHotkeys: (s) => applyHotkeys(s, { onToggle: toggleWidget, onNewTodo: openNewTodoWindow }),
     setAutoLaunch: (v) => app.setLoginItemSettings({ openAtLogin: !!v }),
     openDetail,
     exitApp,
@@ -125,10 +125,9 @@ function broadcast(channel) {
   }
 }
 
-// 详情独立窗口：不受桌面贴尺寸限制；贴桌面贴旁弹出
+// 详情独立窗口：不受桌面贴尺寸限制；光标所在屏居中弹出（不跟随桌面贴）
 function openDetail(id) {
-  const near = widgetWin && !widgetWin.isDestroyed() ? widgetWin.getBounds() : null;
-  createDetailWindow(id, near);
+  createDetailWindow(id);
 }
 
 // ---- 窗口 ----
@@ -142,12 +141,14 @@ function createWidget() {
     },
   });
   widgetWin.on('closed', () => { widgetWin = null; });
-  const ok = applyHotkey(state.settings.hotkey, toggleWidget);
-  if (!ok) {
-    logger.write(dataDir, `快捷键注册失败：${state.settings.hotkey}`);
-    try {
-      new Notification({ title: 'TodoDesk', body: '全局快捷键注册失败，可在设置中修改' }).show();
-    } catch { /* 忽略 */ }
+  const reg = applyHotkeys(state.settings, { onToggle: toggleWidget, onNewTodo: openNewTodoWindow });
+  for (const key of Object.keys(reg)) {
+    if (!reg[key]) {
+      logger.write(dataDir, `快捷键注册失败：${state.settings[key]}`);
+      try {
+        new Notification({ title: 'TodoDesk', body: '全局快捷键注册失败，可在设置中修改' }).show();
+      } catch { /* 忽略 */ }
+    }
   }
 }
 

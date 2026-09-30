@@ -15,7 +15,7 @@ export function diffTodoPatch(todo, values) {
 }
 
 // createTodoForm({ todo, categories, now }) → { el, getValues() }
-// 字段：标题、分类（含「未分类」）、备注、开始/完成/截止（datetime-local）+ 完成勾选。
+// 字段：任务、分类（含「未分类」）、备注、开始/完成/截止（datetime-local）+ 完成勾选。
 // 勾选「完成」时若完成时间为空自动填 now；取消勾选清空完成时间。
 export function createTodoForm({ todo = null, categories = [], now = new Date().toISOString() }) {
   const els = {};
@@ -38,7 +38,7 @@ export function createTodoForm({ todo = null, categories = [], now = new Date().
   els.title.type = 'text';
   els.title.placeholder = '要做的事';
   els.title.value = todo ? todo.title : '';
-  field('标题', els.title);
+  field('任务', els.title);
 
   els.category = document.createElement('select');
   const optNone = document.createElement('option');
@@ -111,7 +111,7 @@ export function createTodoForm({ todo = null, categories = [], now = new Date().
     showError(msg) { err.textContent = msg || ''; },
     getValues() {
       const title = els.title.value.trim();
-      if (!title) { els.error.textContent = '标题不能为空'; els.title.focus(); return null; }
+      if (!title) { els.error.textContent = '任务不能为空'; els.title.focus(); return null; }
       if (!els.startTime.value) { els.error.textContent = '开始时间不能为空'; return null; }
       if (els.doneToggle.checked && !els.endTime.value) { els.error.textContent = '完成时间不能为空'; return null; }
       return {

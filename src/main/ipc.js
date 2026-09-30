@@ -148,9 +148,9 @@ function registerIpc(ipcMain, services) {
     const prev = services.getState().settings;
     const next = { ...prev, ...patch };
     services.mutate((s) => { s.settings = next; });
-    if ('hotkey' in patch) {
-      const ok = services.applyHotkey(next.hotkey);
-      if (!ok) services.broadcast('hotkey-failed');
+    if ('hotkey' in patch || 'newTodoHotkey' in patch) {
+      const reg = services.applyHotkeys(next);
+      if (!reg.hotkey || !reg.newTodoHotkey) services.broadcast('hotkey-failed');
     }
     if ('autoLaunch' in patch) services.setAutoLaunch?.(next.autoLaunch);
     services.broadcast('settings-changed');

@@ -10,6 +10,8 @@ function harness() {
   const winOps = [];
   let quitCalls = 0;
   let mainShown = 0;
+  let hotkeyRegs = 0;
+  let hotkeyOk = true;
   const state = seedState('2026-09-25T00:00:00Z');
   const services = {
     getState: () => state,
@@ -19,7 +21,7 @@ function harness() {
     showMainWindow: () => { mainShown += 1; },
     exitApp: () => { quitCalls += 1; },
     toggleWidget: () => {},
-    applyHotkey: () => true,
+    applyHotkeys: () => { hotkeyRegs += 1; return { hotkey: hotkeyOk, newTodoHotkey: hotkeyOk }; },
     openDetail: (id) => { opened.push(id); },
     beginWidgetDrag: (p) => winOps.push(['begin-drag', p]),
     dragWidget: (p) => winOps.push(['drag', p]),
@@ -30,7 +32,8 @@ function harness() {
     on: (ch, fn) => { handlers[ch] = fn; },
   }, services);
   const call = (ch, arg) => handlers[ch]({ sender: {} }, arg);
-  return { handlers, call, state, sent, opened, winOps, quitCalls: () => quitCalls, mainShown: () => mainShown };
+  return { handlers, call, state, sent, opened, winOps, quitCalls: () => quitCalls, mainShown: () => mainShown,
+    hotkeyRegs: () => hotkeyRegs, setHotkeyOk: (v) => { hotkeyOk = v; } };
 }
 
 test('todos:create 校验拒绝空标题', async () => {
@@ -97,4 +100,20 @@ test('settings:set 副作用广播 settings-changed', async () => {
   await h.call('settings:set', { widgetOpacity: 0.6 });
   assert.equal(h.state.settings.widgetOpacity, 0.6);
   assert.ok(h.sent.includes('settings-changed'));
+});
+
+test('settings:set 改任一快捷键都整体重注；注册失败广播 hotkey-failed', async () => {
+  const h = harness();
+  await h.call('settings:set', { newTodoHotkey: 'Control+Shift+M' });
+  assert.equal(h.state.settings.newTodoHotkey, 'Control+Shift+M', '新值已写入');
+  assert.equal(h.hotkeyRegs(), 1, '改新建快捷键（非桌面贴快捷键）也触发重注');
+  assert.ok(!h.sent.includes('hotkey-failed'), '注册成功不广播失败');
+
+  h.setHotkeyOk(false);
+  await h.call('settings:set', { hotkey: 'Control+Alt+X' });
+  assert.equal(h.hotkeyRegs(), 2, '改桌面贴快捷键同样重注');
+  assert.ok(h.sent.includes('hotkey-failed'), '注册失败广播 hotkey-failed');
+
+  await h.call('settings:set', { widgetOpacity: 0.7 });
+  assert.equal(h.hotkeyRegs(), 2, '非快捷键设置不触发重注');
 });

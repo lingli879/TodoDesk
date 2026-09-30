@@ -74,4 +74,8 @@ contextBridge.exposeInMainWorld('todoDesk', {
     ipcRenderer.on('detail:load', handler);
     return () => ipcRenderer.removeListener('detail:load', handler);
   },
+  onNewTodo: (cb) => {
+    ipcRenderer.on('detail:new', cb);
+    return () => ipcRenderer.removeListener('detail:new', cb);
+  },
 });

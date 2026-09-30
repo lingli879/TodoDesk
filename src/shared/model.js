@@ -8,6 +8,7 @@ const CATEGORY_PALETTE = [
 
 const DEFAULT_SETTINGS = {
   hotkey: 'Control+Alt+T',
+  newTodoHotkey: 'Control+Shift+N',
   widgetOpacity: 0.55,
   widgetPosition: null,
   widgetSize: null,
@@ -137,8 +138,8 @@ function validIso(v) {
 
 function validateNewTodo(input) {
   const errors = [];
-  if (typeof input?.title !== 'string' || !input.title.trim()) errors.push('标题不能为空');
-  else if (input.title.length > 200) errors.push('标题过长（≤200 字符）');
+  if (typeof input?.title !== 'string' || !input.title.trim()) errors.push('任务不能为空');
+  else if (input.title.length > 200) errors.push('任务过长（≤200 字符）');
   if (input?.categoryId != null && typeof input.categoryId !== 'string') errors.push('分类无效');
   return { valid: errors.length === 0, errors };
 }
@@ -175,6 +176,7 @@ function validateSettingsPatch(patch) {
   const errors = [];
   const rules = {
     hotkey: (v) => typeof v === 'string' && HOTKEY_RE.test(v),
+    newTodoHotkey: (v) => typeof v === 'string' && (v === '' || HOTKEY_RE.test(v)),
     widgetOpacity: (v) => typeof v === 'number' && v >= 0.15 && v <= 1,
     widgetPosition: (v) => v === null || (isRect(v) && 'x' in v && 'y' in v),
     widgetSize: (v) => v === null || (isRect(v) && 'width' in v && 'height' in v),

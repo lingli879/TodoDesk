@@ -139,6 +139,15 @@ td .cat .dot { width: 8px; height: 8px; border-radius: 50%; }
 td.time { font-variant-numeric: tabular-nums; color: var(--ink-soft); font-size: 13px; }
 td.time.overdue { color: var(--danger); }
 
+/* 任务/备注列单行截断：超宽省略，悬停全文由 JS 检测溢出后挂 title */
+td.title-cell, td.notes-cell {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+td.notes-cell { max-width: 180px; color: var(--ink-soft); font-size: 13px; }
+
 td.actions { text-align: right; }
 td.actions button {
   font: inherit;

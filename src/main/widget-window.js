@@ -213,14 +213,22 @@ function createWidgetWindow({ getSettings, onRectChanged }) {
   return win;
 }
 
-function applyHotkey(accel, onToggle) {
+// 注册设置中的全部全局快捷键（整体重注）：桌面贴开关 + 快速新建待办。
+// 返回 { hotkey, newTodoHotkey } 各自的注册成败，调用方据此提示。
+function applyHotkeys(settings, { onToggle, onNewTodo }) {
   globalShortcut.unregisterAll();
-  if (!accel) return true;
-  try {
-    return globalShortcut.register(accel, onToggle) !== false;
-  } catch {
-    return false;
-  }
+  const tryReg = (accel, cb) => {
+    if (!accel) return true;
+    try {
+      return globalShortcut.register(accel, cb) !== false;
+    } catch {
+      return false;
+    }
+  };
+  return {
+    hotkey: tryReg(settings.hotkey, onToggle),
+    newTodoHotkey: tryReg(settings.newTodoHotkey, onNewTodo),
+  };
 }
 
-module.exports = { createWidgetWindow, applyHotkey, MIN_SIZE };
+module.exports = { createWidgetWindow, applyHotkeys, MIN_SIZE };
