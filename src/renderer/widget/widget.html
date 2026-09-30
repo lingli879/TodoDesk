@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<title>TodoDesk 桌面贴</title>
+<link rel="stylesheet" href="../common/tokens.css">
+<link rel="stylesheet" href="../common/form.css">
+<link rel="stylesheet" href="widget.css">
+<body>
+  <div id="panel">
+    <header id="dragHandle">
+      <span class="app">待办</span>
+      <span id="count"></span>
+    </header>
+    <main id="list"></main>
+    <section id="done" hidden>
+      <details open>
+        <summary>已完成（今天）<span id="doneCount"></span></summary>
+        <ul id="doneList"></ul>
+      </details>
+    </section>
+    <div id="confirmBox" hidden></div>
+  </div>
+  <script type="module" src="widget.js"></script>
+</body>
+</html>

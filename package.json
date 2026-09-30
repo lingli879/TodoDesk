@@ -1,0 +1,39 @@
+{
+  "name": "tododesk",
+  "version": "1.0.0",
+  "description": "透明桌面待办清单",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test \"tests/*.test.js\"",
+    "dist": "set \"ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/\" && set \"ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/\" && electron-builder --win dir"
+  },
+  "devDependencies": {
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.tododesk.app",
+    "productName": "TodoDesk",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "build/tray.png",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "dir"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "asarUnpack": [
+      "node_modules/koffi/**"
+    ]
+  },
+  "dependencies": {
+    "koffi": "^3.3.2"
+  }
+}
