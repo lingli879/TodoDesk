@@ -1,6 +1,6 @@
 {
   "name": "tododesk",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "透明桌面待办清单",
   "main": "src/main/main.js",
   "scripts": {
