@@ -64,18 +64,19 @@ test('renumber 与 filterTodos', () => {
   assert.equal(m.filterTodos([a], { status: 'all', dateField: 'startTime', dateFrom: '2026-09-26' }).length, 0);
 });
 
-test('filterTodos 默认排序：未完成在前，各按开始→完成时间升序', () => {
+test('filterTodos 默认排序：未完成按开始升序在前，已完成按开始倒序在后', () => {
   const t = (id, startTime, endTime, sortOrder) => ({ id, sortOrder, startTime, endTime });
   const out = m.filterTodos([
-    t('done-late',  '2026-09-25T10:00:00Z', '2026-09-27T09:00:00Z', 0), // 已完成，与 done-early 同 startTime、完成更晚
+    t('done-mid',   '2026-09-25T10:00:00Z', '2026-09-26T09:00:00Z', 0), // 已完成，开始居中
     t('active-2',   '2026-09-25T09:00:00Z', null, 1),                    // 未完成，开始晚于 active-1
     t('active-1',   '2026-09-24T08:00:00Z', null, 2),                    // 未完成，开始最早
-    t('done-early', '2026-09-25T10:00:00Z', '2026-09-26T09:00:00Z', 3), // 已完成，同 startTime 先完成
-    t('active-null', null, null, 4),                                      // 未完成，startTime 空 → 组内最后
+    t('done-new',   '2026-09-26T10:00:00Z', '2026-09-27T09:00:00Z', 3), // 已完成，开始最晚 → 组内第一
+    t('done-old',   '2026-09-23T10:00:00Z', '2026-09-23T11:00:00Z', 4), // 已完成，开始最早 → 组内最后
+    t('active-null', null, null, 5),                                      // 未完成，startTime 空 → 组内最后
   ], {});
   assert.deepEqual(out.map((x) => x.id), [
     'active-1', 'active-2', 'active-null',
-    'done-early', 'done-late',
+    'done-new', 'done-mid', 'done-old',
   ]);
 });
 

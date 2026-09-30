@@ -113,11 +113,22 @@ function filterTodos(todos, { status = 'all', categoryId = 'all', dateField = 's
     const to = new Date(`${dateTo}T23:59:59.999`);
     out = out.filter((t) => new Date(t[dateField]) <= to);
   }
-  // 默认排序：未完成在前、已完成在后；各按开始→完成时间升序（空值排组内最后）。
-  // 不按分类分组——分类维度由筛选条承担（过滤即分组）。
+  // 默认排序：未完成在前按开始时间升序；已完成在后按开始时间倒序（次键完成时间，随组方向）。
+  // 空时间恒排组内末尾（与方向无关）。不按分类分组——分类维度由筛选条承担（过滤即分组）。
   const doneRank = (t) => (isCompleted(t) ? 1 : 0);
-  const ts = (v) => { const x = v == null ? NaN : new Date(v).getTime(); return Number.isNaN(x) ? Infinity : x; };
-  return out.sort((a, b) => doneRank(a) - doneRank(b) || ts(a.startTime) - ts(b.startTime) || ts(a.endTime) - ts(b.endTime));
+  const ts = (v, invert) => {
+    const x = v == null ? NaN : new Date(v).getTime();
+    if (Number.isNaN(x)) return invert ? -Infinity : Infinity; // 倒序组把空映射为 -∞，乘 -1 后仍排末尾
+    return x;
+  };
+  return out.sort((a, b) => {
+    const d = doneRank(a) - doneRank(b);
+    if (d) return d;
+    const dir = doneRank(a) === 1 ? -1 : 1; // 已完成组内倒序
+    const neg = dir === -1;
+    return (ts(a.startTime, neg) - ts(b.startTime, neg)) * dir
+      || (ts(a.endTime, neg) - ts(b.endTime, neg)) * dir;
+  });
 }
 
 function validIso(v) {
