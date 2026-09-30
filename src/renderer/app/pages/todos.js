@@ -5,7 +5,7 @@ import { fmtDateTime } from '../../common/format.js';
 import { confirmDialog } from '../app.js';
 
 let filter = { status: 'all', categoryId: 'all', dateField: 'startTime', dateFrom: '', dateTo: '' };
-let sortState = null; // { key: 'startTime'|'endTime'|'dueTime', dir: 1|-1 }，null = 默认 sortOrder
+let sortState = null; // { key: 'startTime'|'endTime'|'dueTime', dir: 1|-1 }，null = 默认排序（未完成在前，各按开始/完成时间升序；sortOrder 只对桌面贴生效）
 
 export async function renderTodosPage(page) {
   const [categories, todos] = await Promise.all([
