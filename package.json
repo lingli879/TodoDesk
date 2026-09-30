@@ -2,6 +2,7 @@
   "name": "tododesk",
   "version": "1.0.0",
   "description": "透明桌面待办清单",
+  "author": "lingli879@qq.com",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
