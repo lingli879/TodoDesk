@@ -113,7 +113,11 @@ function filterTodos(todos, { status = 'all', categoryId = 'all', dateField = 's
     const to = new Date(`${dateTo}T23:59:59.999`);
     out = out.filter((t) => new Date(t[dateField]) <= to);
   }
-  return out.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  // 默认排序：未完成在前、已完成在后；各按开始→完成时间升序（空值排组内最后）。
+  // 不按分类分组——分类维度由筛选条承担（过滤即分组）。
+  const doneRank = (t) => (isCompleted(t) ? 1 : 0);
+  const ts = (v) => { const x = v == null ? NaN : new Date(v).getTime(); return Number.isNaN(x) ? Infinity : x; };
+  return out.sort((a, b) => doneRank(a) - doneRank(b) || ts(a.startTime) - ts(b.startTime) || ts(a.endTime) - ts(b.endTime));
 }
 
 function validIso(v) {
