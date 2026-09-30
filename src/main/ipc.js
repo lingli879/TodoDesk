@@ -165,6 +165,7 @@ function registerIpc(ipcMain, services) {
   on('detail:open', (id) => services.openDetail(id));
   on('openDataFolder', () => services.openDataFolder());
   on('app:quit', () => services.exitApp());
+  on('app:show-main', () => services.showMainWindow());
 
   // ---- 桌面贴窗口拖动/缩放（附着桌面层后系统循环失效，应用层单向高频通道）----
   const recv = (ch, fn) => ipcMain.on(ch, (_event, arg) => {

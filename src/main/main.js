@@ -240,6 +240,7 @@ function createTray() {
   const icon = nativeImage.createFromPath(path.join(__dirname, '../../build/tray.png'));
   tray = new Tray(icon);
   tray.setToolTip('TodoDesk');
+  tray.on('double-click', () => showMainWindow());
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: '打开主程序', click: () => showMainWindow() },
     { label: '显示/隐藏桌面贴', click: () => toggleWidget() },

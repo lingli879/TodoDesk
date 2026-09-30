@@ -54,6 +54,7 @@ contextBridge.exposeInMainWorld('todoDesk', {
   },
   app: {
     quit: invoke('app:quit'),
+    showMain: invoke('app:show-main'),
   },
   openDataFolder: invoke('openDataFolder'),
   onDataChange: (cb) => {

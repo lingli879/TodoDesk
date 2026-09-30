@@ -9,13 +9,14 @@ function harness() {
   const opened = [];
   const winOps = [];
   let quitCalls = 0;
+  let mainShown = 0;
   const state = seedState('2026-09-25T00:00:00Z');
   const services = {
     getState: () => state,
     mutate: (fn) => fn(state),
     broadcast: (ch) => sent.push(ch),
     openDataFolder: () => {},
-    showMainWindow: () => {},
+    showMainWindow: () => { mainShown += 1; },
     exitApp: () => { quitCalls += 1; },
     toggleWidget: () => {},
     applyHotkey: () => true,
@@ -29,7 +30,7 @@ function harness() {
     on: (ch, fn) => { handlers[ch] = fn; },
   }, services);
   const call = (ch, arg) => handlers[ch]({ sender: {} }, arg);
-  return { handlers, call, state, sent, opened, winOps, quitCalls: () => quitCalls };
+  return { handlers, call, state, sent, opened, winOps, quitCalls: () => quitCalls, mainShown: () => mainShown };
 }
 
 test('todos:create 校验拒绝空标题', async () => {
@@ -50,6 +51,13 @@ test('app:quit 转发给退出服务', async () => {
   const r = await h.call('app:quit');
   assert.equal(r.ok, true);
   assert.equal(h.quitCalls(), 1);
+});
+
+test('app:show-main 转发给主窗口服务', async () => {
+  const h = harness();
+  const r = await h.call('app:show-main');
+  assert.equal(r.ok, true);
+  assert.equal(h.mainShown(), 1);
 });
 
 test('widget:begin-drag/drag-move 转发给窗口服务', () => {
