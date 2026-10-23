@@ -1,11 +1,11 @@
 // 待办管理页：筛选（状态/分类/日期范围）、列表、新建/编辑弹窗（复用共享表单）、批量删除。
 // 历史完成查看 = 状态选「已完成」+ 日期范围按完成时间筛选。
 import { createTodoForm, diffTodoPatch } from '../../common/todo-form.js';
-import { fmtDateTime } from '../../common/format.js';
+import { fmtDateTime, fmtHours } from '../../common/format.js';
 import { confirmDialog } from '../app.js';
 
 let filter = { status: 'all', categoryId: 'all', dateField: 'startTime', dateFrom: '', dateTo: '' };
-let sortState = null; // { key: 'startTime'|'endTime'|'dueTime', dir: 1|-1 }，null = 默认 sortOrder
+let sortState = null; // { key: 'startTime'|'endTime'|'durationHours'|'dueTime', dir: 1|-1 }，null = 默认排序（未完成在前，各按开始/完成时间升序；sortOrder 只对桌面贴生效）
 
 export async function renderTodosPage(page) {
   const [categories, todos] = await Promise.all([
@@ -61,10 +61,10 @@ export async function renderTodosPage(page) {
   const thead = document.createElement('thead');
   const tr = document.createElement('tr');
   tr.append(Object.assign(document.createElement('th'), { style: 'width:32px' }));
-  tr.append(th('标题'));
+  tr.append(th('任务'));
   tr.append(th('分类'));
   // 时间列头可点击排序（spec §3），再点切换升降序
-  for (const [label, key] of [['开始', 'startTime'], ['完成', 'endTime'], ['截止', 'dueTime']]) {
+  for (const [label, key] of [['开始', 'startTime'], ['完成', 'endTime'], ['耗时', 'durationHours'], ['截止', 'dueTime']]) {
     const h = th(label + (sortState && sortState.key === key ? (sortState.dir === 1 ? ' ↑' : ' ↓') : ''), () => {
       sortState = sortState && sortState.key === key ? { key, dir: -sortState.dir } : { key, dir: 1 };
       rerender();
@@ -79,7 +79,11 @@ export async function renderTodosPage(page) {
   const tbody = document.createElement('tbody');
 
   const rows = sortState
-    ? [...todos].sort((a, b) => (new Date(a[sortState.key] ?? 0) - new Date(b[sortState.key] ?? 0)) * sortState.dir)
+    ? [...todos].sort((a, b) => {
+        // 耗时是数字，其余是 ISO 时间；统一折成可比较数值
+        const val = (t) => (typeof t[sortState.key] === 'number' ? t[sortState.key] : new Date(t[sortState.key] ?? 0).getTime());
+        return (val(a) - val(b)) * sortState.dir;
+      })
     : todos;
   for (const t of rows) {
     const cat = t.categoryId ? catMap.get(t.categoryId) : null;
@@ -115,9 +119,15 @@ export async function renderTodosPage(page) {
 
     tr.append(timeTd(t.startTime));
     tr.append(timeTd(t.endTime));
+    const durTd = document.createElement('td');
+    durTd.className = 'time';
+    durTd.textContent = fmtHours(t.durationHours);
+    tr.append(durTd);
     tr.append(timeTd(t.dueTime, overdue));
 
-    tr.append(tdText(t.notes || ''));
+    const notesTd = tdText(t.notes || '');
+    notesTd.className = 'notes-cell';
+    tr.append(notesTd);
 
     const actTd = document.createElement('td');
     actTd.className = 'actions';
@@ -132,6 +142,13 @@ export async function renderTodosPage(page) {
   }
   table.append(tbody);
   page.append(table);
+
+  // 截断列的悬停提示：布局完成后检测溢出，仅在显示不完整时挂 title（全文）
+  requestAnimationFrame(() => {
+    for (const td of tbody.querySelectorAll('td.title-cell, td.notes-cell')) {
+      if (td.scrollWidth > td.clientWidth) td.title = td.textContent;
+    }
+  });
 
   // ---- 批量删除 ----
   const batchBar = document.createElement('div');
@@ -209,7 +226,10 @@ async function openTodoModal(todo, categories) {
         const patch = {};
         if (values.notes) patch.notes = values.notes;
         if (values.dueTime) patch.dueTime = values.dueTime;
-        if (values.endTime) patch.endTime = values.endTime;
+        if (values.endTime) {
+          patch.endTime = values.endTime;
+          if (values.durationHours != null) patch.durationHours = values.durationHours;
+        }
         if (values.startTime) patch.startTime = values.startTime;
         if (Object.keys(patch).length) await window.todoDesk.todos.update({ id: created.id, patch });
       }

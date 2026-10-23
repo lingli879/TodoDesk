@@ -3,7 +3,7 @@
 const {
   CATEGORY_PALETTE, createCategory, createTodo, renumber,
   visibleTodos, filterTodos, validateNewTodo, validateTodoPatch,
-  validateCategoryInput, validateSettingsPatch, applyTodoUpdate,
+  validateCategoryInput, validateSettingsPatch, applyTodoUpdate, computeDurationHours,
 } = require('../shared/model');
 
 function registerIpc(ipcMain, services) {
@@ -95,6 +95,7 @@ function registerIpc(ipcMain, services) {
       if (t.endTime == null) {
         t.endTime = now();
         t.updatedAt = t.endTime;
+        t.durationHours = computeDurationHours(t.startTime, t.endTime);
       }
       return t;
     });
@@ -106,6 +107,7 @@ function registerIpc(ipcMain, services) {
     const out = services.mutate((s) => {
       const t = findTodo(s, id);
       t.endTime = null;
+      t.durationHours = null;
       t.endTimeManuallySet = false;
       t.updatedAt = now();
       return t;
@@ -148,9 +150,9 @@ function registerIpc(ipcMain, services) {
     const prev = services.getState().settings;
     const next = { ...prev, ...patch };
     services.mutate((s) => { s.settings = next; });
-    if ('hotkey' in patch) {
-      const ok = services.applyHotkey(next.hotkey);
-      if (!ok) services.broadcast('hotkey-failed');
+    if ('hotkey' in patch || 'newTodoHotkey' in patch) {
+      const reg = services.applyHotkeys(next);
+      if (!reg.hotkey || !reg.newTodoHotkey) services.broadcast('hotkey-failed');
     }
     if ('autoLaunch' in patch) services.setAutoLaunch?.(next.autoLaunch);
     services.broadcast('settings-changed');
@@ -165,6 +167,7 @@ function registerIpc(ipcMain, services) {
   on('detail:open', (id) => services.openDetail(id));
   on('openDataFolder', () => services.openDataFolder());
   on('app:quit', () => services.exitApp());
+  on('app:show-main', () => services.showMainWindow());
 
   // ---- 桌面贴窗口拖动/缩放（附着桌面层后系统循环失效，应用层单向高频通道）----
   const recv = (ch, fn) => ipcMain.on(ch, (_event, arg) => {

@@ -2,7 +2,7 @@
 // 便携数据层：加载（损坏→备份→标记）、原子保存（tmp+rename）、滚动备份、写权限探测。
 const fs = require('node:fs');
 const path = require('node:path');
-const { seedState, DEFAULT_SETTINGS } = require('./model');
+const { seedState, DEFAULT_SETTINGS, computeDurationHours } = require('./model');
 
 const FILE = 'data.json';
 const BAK = 'data.json.bak';
@@ -28,6 +28,8 @@ function sanitize(data) {
     ? data.todos.map((t) => ({
       id: t.id, title: t.title, notes: t.notes ?? '', categoryId: t.categoryId ?? null,
       startTime: t.startTime, endTime: t.endTime ?? null, dueTime: t.dueTime ?? null,
+      // 存量已完成待办缺耗时 → 按时间差回填默认值（已有人工值不覆盖）
+      durationHours: t.durationHours ?? (t.endTime != null ? computeDurationHours(t.startTime, t.endTime) : null),
       createdAt: t.createdAt, updatedAt: t.updatedAt,
       endTimeManuallySet: t.endTimeManuallySet === true, sortOrder: t.sortOrder ?? 0,
     }))

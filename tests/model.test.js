@@ -20,6 +20,38 @@ test('applyTodoUpdate：带 endTime 的 patch 置 endTimeManuallySet', () => {
   assert.equal(undone.endTimeManuallySet, false);
 });
 
+test('computeDurationHours：0.5 步进四舍五入（半值向上）；缺失/倒挂为 null', () => {
+  const s = '2026-09-25T02:00:00.000Z';
+  assert.equal(m.computeDurationHours(s, '2026-09-25T03:10:00.000Z'), 1);    // 1.17h → 1
+  assert.equal(m.computeDurationHours(s, '2026-09-25T03:20:00.000Z'), 1.5);  // 1.33h → 1.5
+  assert.equal(m.computeDurationHours(s, '2026-09-25T02:10:00.000Z'), 0);    // 0.17h → 0
+  assert.equal(m.computeDurationHours(s, '2026-09-25T04:15:00.000Z'), 2.5);  // 2.25h 半值向上 → 2.5
+  assert.equal(m.computeDurationHours(s, null), null);
+  assert.equal(m.computeDurationHours(null, s), null);
+  assert.equal(m.computeDurationHours('2026-09-25T03:00:00.000Z', s), null); // 完成<开始 视为异常
+});
+
+test('applyTodoUpdate：endTime 变动联动耗时；显式 durationHours 优先；取消完成清空', () => {
+  const t = m.createTodo({ title: 'a' }, [], '2026-09-25T02:00:00.000Z');
+  const done = m.applyTodoUpdate(t, { endTime: '2026-09-25T05:15:00.000Z' }, '2026-09-25T05:15:00.000Z');
+  assert.equal(done.durationHours, 3.5); // 3.25h 半值向上 → 3.5（未显式给耗时 → 重算）
+  const manual = m.applyTodoUpdate(done, { endTime: '2026-09-25T06:00:00.000Z', durationHours: 5 }, '2026-09-25T06:00:00.000Z');
+  assert.equal(manual.durationHours, 5); // 人工值优先于重算
+  const undone = m.applyTodoUpdate(manual, { endTime: null, durationHours: 5 }, '2026-09-25T07:00:00.000Z');
+  assert.equal(undone.durationHours, null); // 取消完成耗时无意义，强制清空
+  const onlyDur = m.applyTodoUpdate(t, { durationHours: 2.5 }, '2026-09-25T07:00:00.000Z');
+  assert.equal(onlyDur.durationHours, 2.5); // 仅改耗时不触发重算
+});
+
+test('validateTodoPatch：durationHours 须为非负 0.5 步进', () => {
+  assert.equal(m.validateTodoPatch({ durationHours: 2.5 }).valid, true);
+  assert.equal(m.validateTodoPatch({ durationHours: 0 }).valid, true);
+  assert.equal(m.validateTodoPatch({ durationHours: null }).valid, true);
+  assert.equal(m.validateTodoPatch({ durationHours: 2.3 }).valid, false);
+  assert.equal(m.validateTodoPatch({ durationHours: -1 }).valid, false);
+  assert.equal(m.validateTodoPatch({ durationHours: '2' }).valid, false);
+});
+
 test('isSameDay 按本地自然日（跨 UTC 午夜）', () => {
   // 本地 2026-09-25 23:30 与 2026-09-26 00:30（构造本地时间再转 ISO）
   const late = new Date(2026, 8, 25, 23, 30).toISOString();
@@ -64,6 +96,22 @@ test('renumber 与 filterTodos', () => {
   assert.equal(m.filterTodos([a], { status: 'all', dateField: 'startTime', dateFrom: '2026-09-26' }).length, 0);
 });
 
+test('filterTodos 默认排序：未完成按开始升序在前，已完成按开始倒序在后', () => {
+  const t = (id, startTime, endTime, sortOrder) => ({ id, sortOrder, startTime, endTime });
+  const out = m.filterTodos([
+    t('done-mid',   '2026-09-25T10:00:00Z', '2026-09-26T09:00:00Z', 0), // 已完成，开始居中
+    t('active-2',   '2026-09-25T09:00:00Z', null, 1),                    // 未完成，开始晚于 active-1
+    t('active-1',   '2026-09-24T08:00:00Z', null, 2),                    // 未完成，开始最早
+    t('done-new',   '2026-09-26T10:00:00Z', '2026-09-27T09:00:00Z', 3), // 已完成，开始最晚 → 组内第一
+    t('done-old',   '2026-09-23T10:00:00Z', '2026-09-23T11:00:00Z', 4), // 已完成，开始最早 → 组内最后
+    t('active-null', null, null, 5),                                      // 未完成，startTime 空 → 组内最后
+  ], {});
+  assert.deepEqual(out.map((x) => x.id), [
+    'active-1', 'active-2', 'active-null',
+    'done-new', 'done-mid', 'done-old',
+  ]);
+});
+
 test('validateCategoryInput：color 必须在色板内', () => {
   assert.equal(m.validateCategoryInput({ name: 'x', color: '#FF0000' }).valid, false);
   assert.equal(m.validateCategoryInput({ name: 'x', color: '#2FA98C' }).valid, true);
@@ -79,6 +127,8 @@ test('validateSettingsPatch：白名单/类型/范围/快捷键须带修饰键',
   assert.equal(m.validateSettingsPatch({ hacker: 1 }).valid, false, '未知键拒绝');
   assert.equal(m.validateSettingsPatch({ hotkey: 'T' }).valid, false, '裸键快捷键拒绝');
   assert.equal(m.validateSettingsPatch({ hotkey: 'Control+Alt+T' }).valid, true);
+  assert.equal(m.validateSettingsPatch({ newTodoHotkey: 'Control+Shift+N' }).valid, true, '新建待办快捷键在白名单');
+  assert.equal(m.validateSettingsPatch({ newTodoHotkey: 'N' }).valid, false, '新建待办快捷键裸键拒绝');
   assert.equal(m.validateSettingsPatch({ widgetVisibleCategoryIds: ['a', 'b'] }).valid, true);
   assert.equal(m.validateSettingsPatch({ widgetVisibleCategoryIds: 'a' }).valid, false);
   assert.equal(m.validateSettingsPatch({ widgetPosition: { x: 1, y: 2 } }).valid, true);
@@ -86,6 +136,10 @@ test('validateSettingsPatch：白名单/类型/范围/快捷键须带修饰键',
   assert.equal(m.validateSettingsPatch({ widgetSize: null }).valid, true);
   assert.equal(m.validateSettingsPatch({ autoLaunch: true, showCompletedInWidget: false, widgetGroupByCategory: true, widgetShowUncategorized: false }).valid, true);
   assert.equal(m.validateSettingsPatch({ autoLaunch: 'yes' }).valid, false);
+});
+
+test('seedState 默认设置含新建待办快捷键 Control+Shift+N', () => {
+  assert.equal(m.seedState('2026-09-25T00:00:00Z').settings.newTodoHotkey, 'Control+Shift+N');
 });
 
 test('showCompletedInWidget=false 时桌面贴视图不含当天完成', () => {

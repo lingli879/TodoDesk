@@ -125,7 +125,7 @@ function renderDoneTodo(t) {
   title.textContent = t.title;
   const time = document.createElement('span');
   time.className = 'time';
-  time.textContent = fmtTime(t.endTime);
+  time.textContent = t.durationHours != null ? `${fmtTime(t.endTime)} · ${t.durationHours}h` : fmtTime(t.endTime);
   li.append(cb, title, time);
   return li;
 }
@@ -352,6 +352,7 @@ window.todoDesk.onSettingsChange(() => { applyOpacity(); refresh(); });
 function windowDrag(el) {
   el.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
+    if (e.target.closest('button')) return; // 齿轮等按钮走自身 click，不进入拖动通道
     window.todoDesk.widget.beginDrag({ screenX: e.screenX, screenY: e.screenY });
     const move = (ev) => window.todoDesk.widget.dragMove({ screenX: ev.screenX, screenY: ev.screenY });
     const up = () => {
@@ -366,6 +367,11 @@ function windowDrag(el) {
 windowDrag(document.getElementById('dragHandle'));
 const doneSummary = document.querySelector('#done summary');
 if (doneSummary) windowDrag(doneSummary);
+
+// 右上角齿轮：弹出主程序
+document.getElementById('openMainBtn').addEventListener('click', () => {
+  window.todoDesk.app.showMain();
+});
 
 refresh();
 applyOpacity();

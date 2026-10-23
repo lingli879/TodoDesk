@@ -8,6 +8,7 @@ const CATEGORY_PALETTE = [
 
 const DEFAULT_SETTINGS = {
   hotkey: 'Control+Alt+T',
+  newTodoHotkey: 'Control+Shift+N',
   widgetOpacity: 0.55,
   widgetPosition: null,
   widgetSize: null,
@@ -36,6 +37,7 @@ function createTodo({ title, categoryId }, todos, now) {
     categoryId: categoryId ?? null,
     startTime: now,
     endTime: null,
+    durationHours: null,
     dueTime: null,
     createdAt: now,
     updatedAt: now,
@@ -50,6 +52,14 @@ function renumber(orderedIds) {
 
 function isCompleted(todo) {
   return todo.endTime != null;
+}
+
+// 耗时（小时）：完成-开始的时间差，按 0.5 步进四舍五入（半值向上）；时间缺失或倒挂 → null。
+function computeDurationHours(startTime, endTime) {
+  if (startTime == null || endTime == null) return null;
+  const ms = new Date(endTime).getTime() - new Date(startTime).getTime();
+  if (ms < 0) return null;
+  return Math.round(ms / 1800000) / 2; // 半小时数取整后折回小时
 }
 
 function isOverdue(todo, now) {
@@ -113,7 +123,22 @@ function filterTodos(todos, { status = 'all', categoryId = 'all', dateField = 's
     const to = new Date(`${dateTo}T23:59:59.999`);
     out = out.filter((t) => new Date(t[dateField]) <= to);
   }
-  return out.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  // 默认排序：未完成在前按开始时间升序；已完成在后按开始时间倒序（次键完成时间，随组方向）。
+  // 空时间恒排组内末尾（与方向无关）。不按分类分组——分类维度由筛选条承担（过滤即分组）。
+  const doneRank = (t) => (isCompleted(t) ? 1 : 0);
+  const ts = (v, invert) => {
+    const x = v == null ? NaN : new Date(v).getTime();
+    if (Number.isNaN(x)) return invert ? -Infinity : Infinity; // 倒序组把空映射为 -∞，乘 -1 后仍排末尾
+    return x;
+  };
+  return out.sort((a, b) => {
+    const d = doneRank(a) - doneRank(b);
+    if (d) return d;
+    const dir = doneRank(a) === 1 ? -1 : 1; // 已完成组内倒序
+    const neg = dir === -1;
+    return (ts(a.startTime, neg) - ts(b.startTime, neg)) * dir
+      || (ts(a.endTime, neg) - ts(b.endTime, neg)) * dir;
+  });
 }
 
 function validIso(v) {
@@ -122,15 +147,15 @@ function validIso(v) {
 
 function validateNewTodo(input) {
   const errors = [];
-  if (typeof input?.title !== 'string' || !input.title.trim()) errors.push('标题不能为空');
-  else if (input.title.length > 200) errors.push('标题过长（≤200 字符）');
+  if (typeof input?.title !== 'string' || !input.title.trim()) errors.push('任务不能为空');
+  else if (input.title.length > 200) errors.push('任务过长（≤200 字符）');
   if (input?.categoryId != null && typeof input.categoryId !== 'string') errors.push('分类无效');
   return { valid: errors.length === 0, errors };
 }
 
 function validateTodoPatch(patch) {
   const errors = [];
-  const allowed = ['title', 'notes', 'categoryId', 'startTime', 'endTime', 'dueTime', 'endTimeManuallySet'];
+  const allowed = ['title', 'notes', 'categoryId', 'startTime', 'endTime', 'durationHours', 'dueTime', 'endTimeManuallySet'];
   for (const k of Object.keys(patch || {})) {
     if (!allowed.includes(k)) errors.push(`未知字段 ${k}`);
   }
@@ -141,6 +166,12 @@ function validateTodoPatch(patch) {
   if ('categoryId' in patch && patch.categoryId != null && typeof patch.categoryId !== 'string') errors.push('分类无效');
   for (const f of ['startTime', 'endTime', 'dueTime']) {
     if (f in patch && patch[f] !== null && !validIso(patch[f])) errors.push(`${f} 时间无效`);
+  }
+  if ('durationHours' in patch) {
+    const v = patch.durationHours;
+    if (v !== null && (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || !Number.isInteger(v * 2))) {
+      errors.push('耗时必须为非负的 0.5 步进小时数');
+    }
   }
   return { valid: errors.length === 0, errors };
 }
@@ -153,6 +184,7 @@ function validateCategoryInput(input) {
 }
 
 // 合并 patch；凡通过编辑器改动 endTime 的保存动作置 endTimeManuallySet=true，清空 endTime 则清除标记。
+// endTime 变动联动耗时：取消完成清空 durationHours；改完成时间且未显式给耗时 → 按时间差重算（人工值优先）。
 // 设置 patch 校验：白名单 + 类型/范围；快捷键必须是「修饰键+键」组合（防裸键劫持）。
 const HOTKEY_RE = /^(Control|Ctrl|CommandOrControl|Alt|Shift|Super|Meta)(\+(Control|Ctrl|Alt|Shift|Super|Meta|[A-Z0-9]))+$/;
 
@@ -160,6 +192,7 @@ function validateSettingsPatch(patch) {
   const errors = [];
   const rules = {
     hotkey: (v) => typeof v === 'string' && HOTKEY_RE.test(v),
+    newTodoHotkey: (v) => typeof v === 'string' && (v === '' || HOTKEY_RE.test(v)),
     widgetOpacity: (v) => typeof v === 'number' && v >= 0.15 && v <= 1,
     widgetPosition: (v) => v === null || (isRect(v) && 'x' in v && 'y' in v),
     widgetSize: (v) => v === null || (isRect(v) && 'width' in v && 'height' in v),
@@ -185,6 +218,8 @@ function applyTodoUpdate(todo, patch, now) {
   const next = { ...todo, ...patch, updatedAt: now };
   if ('endTime' in patch) {
     next.endTimeManuallySet = patch.endTime != null;
+    if (patch.endTime == null) next.durationHours = null;
+    else if (!('durationHours' in patch)) next.durationHours = computeDurationHours(next.startTime, patch.endTime);
   }
   return next;
 }
@@ -206,6 +241,7 @@ module.exports = {
   nextSortOrder,
   renumber,
   isCompleted,
+  computeDurationHours,
   isOverdue,
   isSameDay,
   visibleTodos,

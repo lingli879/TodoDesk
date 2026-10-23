@@ -16,57 +16,64 @@ export async function renderSettingsPage(page) {
   box.style.gap = '14px';
   box.style.padding = '18px 20px';
 
-  // ---- 快捷键（录制式改键）----
-  const hotkeyRow = row('显示/隐藏桌面贴快捷键');
-  const recBtn = document.createElement('button');
-  recBtn.className = 'ghost';
-  recBtn.textContent = s.hotkey || '未设置（点击录制）';
-  recBtn.style.minWidth = '150px';
-  const hotkeyErr = document.createElement('span');
-  hotkeyErr.style.cssText = 'color: var(--danger); font-size: 12px';
-  let recording = false;
-  recBtn.addEventListener('click', () => {
-    if (recording) return;
-    recording = true;
-    recBtn.textContent = '请按下组合键…';
-    const onKey = (e) => {
-      e.preventDefault();
-      if (e.key === 'Escape') { cleanup(); return; }
-      if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return; // 等待非修饰键
-      if (!e.ctrlKey && !e.altKey && !e.metaKey) {
-        // 裸键会劫持系统级按键（任何程序里按此键都会触发），必须带修饰键
-        hotkeyErr.textContent = '请加 Ctrl / Alt 等修饰键组合';
-        return;
-      }
-      const parts = [];
-      if (e.ctrlKey) parts.push('Control');
-      if (e.altKey) parts.push('Alt');
-      if (e.shiftKey) parts.push('Shift');
-      if (e.metaKey) parts.push('Meta');
-      parts.push(e.key.length === 1 ? e.key.toUpperCase() : e.key);
-      cleanup(parts.join('+'));
-    };
-    const cleanup = async (accel) => {
-      recording = false;
-      recBtn.removeEventListener('keydown', onKey);
-      if (accel) {
-        try {
-          await window.todoDesk.settings.set({ hotkey: accel });
-          recBtn.textContent = accel;
-          hotkeyErr.textContent = '';
-        } catch (err) {
-          hotkeyErr.textContent = err.message;
+  // ---- 快捷键（录制式改键，多组快捷键复用同一录制交互）----
+  const hotkeyErrs = [];
+  function makeHotkeyRow(label, settingKey, current) {
+    const r = row(label);
+    const recBtn = document.createElement('button');
+    recBtn.className = 'ghost';
+    recBtn.textContent = current || '未设置（点击录制）';
+    recBtn.style.minWidth = '150px';
+    const err = document.createElement('span');
+    err.style.cssText = 'color: var(--danger); font-size: 12px';
+    hotkeyErrs.push(err);
+    let recording = false;
+    recBtn.addEventListener('click', () => {
+      if (recording) return;
+      recording = true;
+      recBtn.textContent = '请按下组合键…';
+      const onKey = (e) => {
+        e.preventDefault();
+        if (e.key === 'Escape') { cleanup(); return; }
+        if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return; // 等待非修饰键
+        if (!e.ctrlKey && !e.altKey && !e.metaKey) {
+          // 裸键会劫持系统级按键（任何程序里按此键都会触发），必须带修饰键
+          err.textContent = '请加 Ctrl / Alt 等修饰键组合';
+          return;
         }
-      } else {
-        recBtn.textContent = (await window.todoDesk.settings.get()).hotkey || '未设置';
-      }
-    };
-    recBtn.addEventListener('keydown', onKey);
-    recBtn.focus();
-  });
-  hotkeyErr.textContent = '';
-  hotkeyRow.append(recBtn, hotkeyErr);
-  box.append(hotkeyRow);
+        const parts = [];
+        if (e.ctrlKey) parts.push('Control');
+        if (e.altKey) parts.push('Alt');
+        if (e.shiftKey) parts.push('Shift');
+        if (e.metaKey) parts.push('Meta');
+        parts.push(e.key.length === 1 ? e.key.toUpperCase() : e.key);
+        cleanup(parts.join('+'));
+      };
+      const cleanup = async (accel) => {
+        recording = false;
+        recBtn.removeEventListener('keydown', onKey);
+        if (accel) {
+          try {
+            await window.todoDesk.settings.set({ [settingKey]: accel });
+            recBtn.textContent = accel;
+            err.textContent = '';
+          } catch (e2) {
+            err.textContent = e2.message;
+          }
+        } else {
+          recBtn.textContent = (await window.todoDesk.settings.get())[settingKey] || '未设置';
+        }
+      };
+      recBtn.addEventListener('keydown', onKey);
+      recBtn.focus();
+    });
+    r.append(recBtn, err);
+    return r;
+  }
+  box.append(
+    makeHotkeyRow('显示/隐藏桌面贴快捷键', 'hotkey', s.hotkey),
+    makeHotkeyRow('新建待办快捷键', 'newTodoHotkey', s.newTodoHotkey),
+  );
 
   // ---- 立即显示/隐藏桌面贴（与快捷键同一 toggle 路径）----
   const widgetRow = row('显示/隐藏桌面贴');
@@ -78,8 +85,7 @@ export async function renderSettingsPage(page) {
   box.append(widgetRow);
 
   window.todoDesk.onHotkeyFailed(() => {
-    hotkeyErr.textContent = '快捷键被其他程序占用，请换一个';
-    recBtn.textContent = '点击重新录制';
+    for (const e of hotkeyErrs) e.textContent = '快捷键被其他程序占用，请换一个';
   });
 
   // ---- 桌面贴透明度 ----

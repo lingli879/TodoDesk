@@ -54,6 +54,7 @@ contextBridge.exposeInMainWorld('todoDesk', {
   },
   app: {
     quit: invoke('app:quit'),
+    showMain: invoke('app:show-main'),
   },
   openDataFolder: invoke('openDataFolder'),
   onDataChange: (cb) => {
@@ -72,5 +73,9 @@ contextBridge.exposeInMainWorld('todoDesk', {
     const handler = (_e, id) => cb(id);
     ipcRenderer.on('detail:load', handler);
     return () => ipcRenderer.removeListener('detail:load', handler);
+  },
+  onNewTodo: (cb) => {
+    ipcRenderer.on('detail:new', cb);
+    return () => ipcRenderer.removeListener('detail:new', cb);
   },
 });
