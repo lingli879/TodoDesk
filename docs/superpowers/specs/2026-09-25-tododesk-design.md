@@ -64,6 +64,7 @@ E:\apps\TodoDesk\
   categoryId: string|null,  // null = 未分类
   startTime: ISO8601,  // 新建时默认 = 创建时刻，可人工调整
   endTime: ISO8601|null,    // 勾选完成时默认 = 此刻，可人工调整；null = 未完成
+  durationHours: number|null, // 耗时（小时）：完成时默认按 endTime−startTime 差计算，0.5 步进四舍五入（半值向上）；null = 未记录
   dueTime: ISO8601|null,    // 截止时间，可选，手动填
   createdAt: ISO8601,
   updatedAt: ISO8601,
@@ -86,6 +87,7 @@ E:\apps\TodoDesk\
 - **完成语义（单一事实来源）**：`endTime` 有值 = 已完成，值即完成时间。「当天已完成」= endTime 落在今天（本地时区自然日）
 - **取消勾选** → 清空 endTime；若该 endTime 曾被人工修改过，先弹确认再清空（防止误丢人工记录）。判定方式：待办上有一个 `endTimeManuallySet: boolean` 标记，任何通过编辑器修改 endTime 的保存动作将其置 true，取消勾选清空时检查此标记
 - **时间调整自由度**：不强制 endTime > startTime 等约束，人工调整后的任何先后关系都允许
+- **耗时（durationHours）**：仅完成态有意义。默认 = endTime−startTime 的时间差按 0.5 小时步进四舍五入（半值向上）；时间倒挂不产出耗时。编辑器改完成时间且未显式给耗时时默认重算，人工填写的值优先；取消完成清空耗时。表单中未手动编辑过耗时输入框时，跟随开始/完成时间自动重算
 - **首次运行**：自动创建「默认」分类（薄荷青色），保证桌面贴新建总有落点
 - **逾期**：dueTime 已过且未完成 → 桌面贴与主程序中用珊瑚色点/文字标识
 - **条目排序**：组内条目按 `sortOrder` 升序排列。**桌面贴支持条目拖拽排序**：悬停时条目左侧出现 ⠿ 拖动手柄，按住手柄在组内上下拖动调整顺序，松手后按新顺序重算受影响条目的 sortOrder 并持久化（点标题仍是编辑，两种手势用手柄/文字区分，互不干扰）。已完成的条目不提供拖拽排序，折叠区内按完成时间倒序展示。主程序待办列表默认按 sortOrder 升序，另可点列头按各时间列排序查看；拖拽排序只在桌面贴进行
@@ -199,7 +201,7 @@ E:\apps\TodoDesk\
 ```
 todoDesk.categories.list() / create({name,color}) / update(id,{...}) / remove(id)
 todoDesk.todos.list(filter?) / create({title,categoryId?}) /
-             update(id,{title?|notes?|categoryId?|startTime?|endTime?|dueTime?}) /
+             update(id,{title?|notes?|categoryId?|startTime?|endTime?|durationHours?|dueTime?}) /
              complete(id) / uncomplete(id) / remove(id)
 todoDesk.settings.get() / set(patch)
 todoDesk.widget.show() / hide() / toggle()

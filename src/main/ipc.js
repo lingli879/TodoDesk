@@ -3,7 +3,7 @@
 const {
   CATEGORY_PALETTE, createCategory, createTodo, renumber,
   visibleTodos, filterTodos, validateNewTodo, validateTodoPatch,
-  validateCategoryInput, validateSettingsPatch, applyTodoUpdate,
+  validateCategoryInput, validateSettingsPatch, applyTodoUpdate, computeDurationHours,
 } = require('../shared/model');
 
 function registerIpc(ipcMain, services) {
@@ -95,6 +95,7 @@ function registerIpc(ipcMain, services) {
       if (t.endTime == null) {
         t.endTime = now();
         t.updatedAt = t.endTime;
+        t.durationHours = computeDurationHours(t.startTime, t.endTime);
       }
       return t;
     });
@@ -106,6 +107,7 @@ function registerIpc(ipcMain, services) {
     const out = services.mutate((s) => {
       const t = findTodo(s, id);
       t.endTime = null;
+      t.durationHours = null;
       t.endTimeManuallySet = false;
       t.updatedAt = now();
       return t;

@@ -19,6 +19,23 @@ test('首次 load 返回种子并可在 save/load 往返', () => {
   assert.equal(r2.corrupted, false);
 });
 
+test('sanitize 补 durationHours 并为存量已完成回填', () => {
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, 'data.json'), JSON.stringify({
+    ...good,
+    todos: [
+      { id: '1', title: 'done-old', startTime: '2026-09-25T02:00:00Z', endTime: '2026-09-25T04:15:00Z' },
+      { id: '2', title: 'done-kept', startTime: '2026-09-25T02:00:00Z', endTime: '2026-09-25T04:15:00Z', durationHours: 5 },
+      { id: '3', title: 'active', startTime: '2026-09-25T02:00:00Z', endTime: null },
+    ],
+  }));
+  const r = store.loadState(dir);
+  const [d1, d2, a] = r.data.todos;
+  assert.equal(d1.durationHours, 2.5, '存量已完成按时间差回填（2.25h 半值向上）');
+  assert.equal(d2.durationHours, 5, '已有人工值不覆盖');
+  assert.equal(a.durationHours, null, '未完成不填');
+});
+
 test('save 产生 .bak 滚动备份', () => {
   const dir = tmp();
   store.saveState(dir, good);

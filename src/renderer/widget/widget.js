@@ -125,7 +125,7 @@ function renderDoneTodo(t) {
   title.textContent = t.title;
   const time = document.createElement('span');
   time.className = 'time';
-  time.textContent = fmtTime(t.endTime);
+  time.textContent = t.durationHours != null ? `${fmtTime(t.endTime)} · ${t.durationHours}h` : fmtTime(t.endTime);
   li.append(cb, title, time);
   return li;
 }

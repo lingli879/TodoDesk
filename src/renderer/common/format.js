@@ -24,3 +24,16 @@ export function localInputToIso(str) {
   const d = new Date(str);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
+
+// 耗时（小时，0.5 步进四舍五入）：与主进程 computeDurationHours（shared/model.js）语义一致；
+// 渲染层为 ESM 无法直接复用 CJS 模块，两处需同步维护。时间缺失/倒挂 → null。
+export function durationHoursBetween(startIso, endIso) {
+  if (!startIso || !endIso) return null;
+  const ms = new Date(endIso).getTime() - new Date(startIso).getTime();
+  if (ms < 0) return null;
+  return Math.round(ms / 1800000) / 2;
+}
+
+export function fmtHours(v) {
+  return v == null ? '—' : `${v}h`;
+}

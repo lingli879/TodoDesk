@@ -20,6 +20,38 @@ test('applyTodoUpdate：带 endTime 的 patch 置 endTimeManuallySet', () => {
   assert.equal(undone.endTimeManuallySet, false);
 });
 
+test('computeDurationHours：0.5 步进四舍五入（半值向上）；缺失/倒挂为 null', () => {
+  const s = '2026-09-25T02:00:00.000Z';
+  assert.equal(m.computeDurationHours(s, '2026-09-25T03:10:00.000Z'), 1);    // 1.17h → 1
+  assert.equal(m.computeDurationHours(s, '2026-09-25T03:20:00.000Z'), 1.5);  // 1.33h → 1.5
+  assert.equal(m.computeDurationHours(s, '2026-09-25T02:10:00.000Z'), 0);    // 0.17h → 0
+  assert.equal(m.computeDurationHours(s, '2026-09-25T04:15:00.000Z'), 2.5);  // 2.25h 半值向上 → 2.5
+  assert.equal(m.computeDurationHours(s, null), null);
+  assert.equal(m.computeDurationHours(null, s), null);
+  assert.equal(m.computeDurationHours('2026-09-25T03:00:00.000Z', s), null); // 完成<开始 视为异常
+});
+
+test('applyTodoUpdate：endTime 变动联动耗时；显式 durationHours 优先；取消完成清空', () => {
+  const t = m.createTodo({ title: 'a' }, [], '2026-09-25T02:00:00.000Z');
+  const done = m.applyTodoUpdate(t, { endTime: '2026-09-25T05:15:00.000Z' }, '2026-09-25T05:15:00.000Z');
+  assert.equal(done.durationHours, 3.5); // 3.25h 半值向上 → 3.5（未显式给耗时 → 重算）
+  const manual = m.applyTodoUpdate(done, { endTime: '2026-09-25T06:00:00.000Z', durationHours: 5 }, '2026-09-25T06:00:00.000Z');
+  assert.equal(manual.durationHours, 5); // 人工值优先于重算
+  const undone = m.applyTodoUpdate(manual, { endTime: null, durationHours: 5 }, '2026-09-25T07:00:00.000Z');
+  assert.equal(undone.durationHours, null); // 取消完成耗时无意义，强制清空
+  const onlyDur = m.applyTodoUpdate(t, { durationHours: 2.5 }, '2026-09-25T07:00:00.000Z');
+  assert.equal(onlyDur.durationHours, 2.5); // 仅改耗时不触发重算
+});
+
+test('validateTodoPatch：durationHours 须为非负 0.5 步进', () => {
+  assert.equal(m.validateTodoPatch({ durationHours: 2.5 }).valid, true);
+  assert.equal(m.validateTodoPatch({ durationHours: 0 }).valid, true);
+  assert.equal(m.validateTodoPatch({ durationHours: null }).valid, true);
+  assert.equal(m.validateTodoPatch({ durationHours: 2.3 }).valid, false);
+  assert.equal(m.validateTodoPatch({ durationHours: -1 }).valid, false);
+  assert.equal(m.validateTodoPatch({ durationHours: '2' }).valid, false);
+});
+
 test('isSameDay 按本地自然日（跨 UTC 午夜）', () => {
   // 本地 2026-09-25 23:30 与 2026-09-26 00:30（构造本地时间再转 ISO）
   const late = new Date(2026, 8, 25, 23, 30).toISOString();

@@ -81,6 +81,23 @@ test('todos:complete 设 endTime 且幂等', async () => {
   assert.equal(c2.value.endTime, c1.value.endTime);
 });
 
+test('todos:complete 自动算耗时、uncomplete 清空、update 改完成时间默认重算', async () => {
+  const h = harness();
+  const t = (await h.call('todos:create', { title: 'a', categoryId: null })).value;
+  const c1 = await h.call('todos:complete', t.id);
+  assert.equal(c1.value.durationHours, 0, '创建后立刻完成 → 0h');
+  await h.call('todos:uncomplete', t.id);
+  assert.equal(h.state.todos[0].durationHours, null, '取消完成清空耗时');
+  const end = new Date(Date.parse(t.startTime) + 3.3 * 3600e3).toISOString();
+  const u1 = await h.call('todos:update', { id: t.id, patch: { endTime: end } });
+  assert.equal(u1.value.durationHours, 3.5, '3.3h → 3.5（未显式给耗时 → 重算）');
+  const end2 = new Date(Date.parse(t.startTime) + 5 * 3600e3).toISOString();
+  const u2 = await h.call('todos:update', { id: t.id, patch: { endTime: end2, durationHours: 2 } });
+  assert.equal(u2.value.durationHours, 2, '显式人工耗时优先');
+  const bad = await h.call('todos:update', { id: t.id, patch: { durationHours: 1.2 } });
+  assert.equal(bad.ok, false, '非 0.5 步进被校验拒绝');
+});
+
 test('写通道广播 data-changed', async () => {
   const h = harness();
   await h.call('todos:create', { title: 'a', categoryId: null });

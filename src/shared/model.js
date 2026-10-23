@@ -37,6 +37,7 @@ function createTodo({ title, categoryId }, todos, now) {
     categoryId: categoryId ?? null,
     startTime: now,
     endTime: null,
+    durationHours: null,
     dueTime: null,
     createdAt: now,
     updatedAt: now,
@@ -51,6 +52,14 @@ function renumber(orderedIds) {
 
 function isCompleted(todo) {
   return todo.endTime != null;
+}
+
+// 耗时（小时）：完成-开始的时间差，按 0.5 步进四舍五入（半值向上）；时间缺失或倒挂 → null。
+function computeDurationHours(startTime, endTime) {
+  if (startTime == null || endTime == null) return null;
+  const ms = new Date(endTime).getTime() - new Date(startTime).getTime();
+  if (ms < 0) return null;
+  return Math.round(ms / 1800000) / 2; // 半小时数取整后折回小时
 }
 
 function isOverdue(todo, now) {
@@ -146,7 +155,7 @@ function validateNewTodo(input) {
 
 function validateTodoPatch(patch) {
   const errors = [];
-  const allowed = ['title', 'notes', 'categoryId', 'startTime', 'endTime', 'dueTime', 'endTimeManuallySet'];
+  const allowed = ['title', 'notes', 'categoryId', 'startTime', 'endTime', 'durationHours', 'dueTime', 'endTimeManuallySet'];
   for (const k of Object.keys(patch || {})) {
     if (!allowed.includes(k)) errors.push(`未知字段 ${k}`);
   }
@@ -157,6 +166,12 @@ function validateTodoPatch(patch) {
   if ('categoryId' in patch && patch.categoryId != null && typeof patch.categoryId !== 'string') errors.push('分类无效');
   for (const f of ['startTime', 'endTime', 'dueTime']) {
     if (f in patch && patch[f] !== null && !validIso(patch[f])) errors.push(`${f} 时间无效`);
+  }
+  if ('durationHours' in patch) {
+    const v = patch.durationHours;
+    if (v !== null && (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || !Number.isInteger(v * 2))) {
+      errors.push('耗时必须为非负的 0.5 步进小时数');
+    }
   }
   return { valid: errors.length === 0, errors };
 }
@@ -169,6 +184,7 @@ function validateCategoryInput(input) {
 }
 
 // 合并 patch；凡通过编辑器改动 endTime 的保存动作置 endTimeManuallySet=true，清空 endTime 则清除标记。
+// endTime 变动联动耗时：取消完成清空 durationHours；改完成时间且未显式给耗时 → 按时间差重算（人工值优先）。
 // 设置 patch 校验：白名单 + 类型/范围；快捷键必须是「修饰键+键」组合（防裸键劫持）。
 const HOTKEY_RE = /^(Control|Ctrl|CommandOrControl|Alt|Shift|Super|Meta)(\+(Control|Ctrl|Alt|Shift|Super|Meta|[A-Z0-9]))+$/;
 
@@ -202,6 +218,8 @@ function applyTodoUpdate(todo, patch, now) {
   const next = { ...todo, ...patch, updatedAt: now };
   if ('endTime' in patch) {
     next.endTimeManuallySet = patch.endTime != null;
+    if (patch.endTime == null) next.durationHours = null;
+    else if (!('durationHours' in patch)) next.durationHours = computeDurationHours(next.startTime, patch.endTime);
   }
   return next;
 }
@@ -223,6 +241,7 @@ module.exports = {
   nextSortOrder,
   renumber,
   isCompleted,
+  computeDurationHours,
   isOverdue,
   isSameDay,
   visibleTodos,

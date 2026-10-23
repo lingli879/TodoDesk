@@ -104,7 +104,10 @@ async function saveNewTodo() {
     const patch = {};
     if (values.notes) patch.notes = values.notes;
     if (values.dueTime) patch.dueTime = values.dueTime;
-    if (values.endTime) patch.endTime = values.endTime;
+    if (values.endTime) {
+      patch.endTime = values.endTime;
+      if (values.durationHours != null) patch.durationHours = values.durationHours;
+    }
     if (values.startTime) patch.startTime = values.startTime;
     if (Object.keys(patch).length) await window.todoDesk.todos.update({ id: created.id, patch });
     window.close();
