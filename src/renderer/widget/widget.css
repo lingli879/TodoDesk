@@ -217,11 +217,15 @@ li.editing input::placeholder { color: var(--ink-soft); }
   flex: none;
 }
 
-/* 滚动条 */
+/* 滚动条：半透明白系浮于面板（track 透明保持通透感；不用 --hairline——那是亮色主题的近白色） */
 #list::-webkit-scrollbar, #doneList::-webkit-scrollbar { width: 6px; }
+#list::-webkit-scrollbar-track, #doneList::-webkit-scrollbar-track { background: transparent; }
 #list::-webkit-scrollbar-thumb, #doneList::-webkit-scrollbar-thumb {
-  background: var(--hairline);
+  background: rgba(255, 255, 255, 0.28);
   border-radius: 3px;
+}
+#list::-webkit-scrollbar-thumb:hover, #doneList::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.45);
 }
 
 /* 确认气泡（贴内自绘，替代原生对话框）：居中紧凑深色玻璃卡 + 白字，与面板气质一致 */
